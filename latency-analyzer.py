@@ -9,8 +9,7 @@ args = arg_parser.parse_args()
 
 import librosa
 import matplotlib
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -118,22 +117,29 @@ def update_start_trim(*args):
     channel.audio_data.set_data(time[start_trim:], channel.audio[start_trim:])
   ax.set_xlim(time[start_trim], time[-1])
   fig.canvas.draw_idle()
-      
+
+start_trim_ctrl = tk.Scale(
+  root,
+  from_=0, to=num_samples-2, resolution=1,
+  variable=start_trim_var, orient=tk.HORIZONTAL,
+  length=400,
+  label="start trim [samples]"
+)
+range_duration_frame = tk.Frame(root)
+range_duration_label = tk.Label(range_duration_frame, text="range duration [s]")
+range_duration_label.pack(side=tk.TOP, anchor=tk.NW)
+range_duration_ctrl = tk.Entry(range_duration_frame,
+  # state="disabled",
+  # height=1
+)
+range_duration_ctrl.pack(side=tk.TOP, fill=tk.X)
+
 ctrls = [
-  tk.Scale(
-    root,
-    from_=0, to=num_samples-2, resolution=1,
-    variable=start_trim_var, orient=tk.HORIZONTAL,
-    length=400,
-    label="start trim [samples]"
-  ),
-  tk.Entry(root,
-    # state="disabled",
-    # height=1
-  )
+  start_trim_ctrl,
+  range_duration_frame
 ]
 
-ctrls[1].bind("<Key>", lambda e: "break")
+range_duration_ctrl.bind("<Key>", lambda e: "break")
 
 start_trim_var.trace_add("write", update_start_trim)
 
@@ -150,11 +156,10 @@ def update_range_rect(onset_range):
     range_rect.set(x=0.0, width=0.0)
     text = ""
 
-  text_ctrl = ctrls[1]
-  # text_ctrl.configure(state="normal")
-  text_ctrl.delete(0,"end")
-  text_ctrl.insert(0, text)
-  # text_ctrl.configure(state="disabled")
+  # range_duration_ctrl.configure(state="normal")
+  range_duration_ctrl.delete(0,"end")
+  range_duration_ctrl.insert(0, text)
+  # range_duration_ctrl.configure(state="disabled")
 
 update_range_rect(onset_range)
 
@@ -178,14 +183,6 @@ def onclick(event):
   
   fig.canvas.draw_idle()
   
-"""
-0.5, [1,2,3]
--> None
-
-2.5, [1,2,3]
--> 2
-"""
-
 fig.canvas.mpl_connect("button_press_event", onclick)
 
 # pack UI elements
