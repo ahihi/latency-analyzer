@@ -78,6 +78,7 @@ class FilePlots:
 class App:
   def __init__(self, root, options):
     self.root = root
+    self.root.title("latency-analyzer (bonk)")
     self.options = options
     
     self.analysis = None
