@@ -22,7 +22,7 @@ class FilePlots:
     self.time = np.linspace(0.0, self.analysis.duration, self.analysis.num_samples)
     self.channels = [self._plot_channel(i) for i in range(len(self.analysis.channels))]
     abs_max = self.analysis.abs_max_amplitude
-    self.selected_rect = patches.Rectangle((0, -abs_max), 0.0, 2*abs_max, linewidth=0, facecolor="#000", alpha=0.125)
+    self.selected_rect = patches.Rectangle((0, -abs_max), 0.0, 2*abs_max, linewidth=0, facecolor="#000", alpha=0.25)
     self.ax.add_patch(self.selected_rect)
 
   def _plot_channel(self, i):
@@ -35,12 +35,14 @@ class FilePlots:
       wave = self.ax.plot(self.time, channel_analysis.audio, label=f"wave {channel_num}", color=color, alpha=0.75)[0]
     )
 
-  def update_start_trim(self, trim):
-    trim_time = trim*self.analysis.sample_duration
+  def update_trim(self, start, end):
+    start_time = start*self.analysis.sample_duration
+    end_time = end*self.analysis.sample_duration
+    
     for channel_analysis, channel_plots in zip(self.analysis.channels, self.channels):
-      self._update_vlines(channel_plots.onsets, self._start_trim_data(channel_analysis.onsets, trim_time))
-      channel_plots.wave.set_data(self.time[trim:], channel_analysis.audio[trim:])
-    self.ax.set_xlim(self.time[trim], self.time[-1])
+      self._update_vlines(channel_plots.onsets, self._trim_data(channel_analysis.onsets, start_time, end_time))
+      channel_plots.wave.set_data(self.time[start:end+1], channel_analysis.audio[start:end+1])
+    self.ax.set_xlim(self.time[start], self.time[end])
 
   def update_selected_onsets(self, start_time, duration):
     self.selected_rect.set(x=start_time, width=duration)
@@ -59,11 +61,19 @@ class FilePlots:
     h.set_segments(seg_new)
 
   @staticmethod
-  def _start_trim_data(data, start_trim):
-    for i, val in enumerate(data):
-      if val >= start_trim:
+  def _trim_data(data, start_time, end_time):
+    last_i = len(data) - 1
+    start_i = 0
+    end_i = last_i
+    for i, time in enumerate(data):
+      if time >= start_time:
+        start_i = i
         break
-    return data[i:]
+    for i, time in enumerate(data[::-1]):
+      if time <= end_time:
+        end_i = last_i - i
+        break
+    return data[start_i:end_i+1]
 
 class App:
   def __init__(self, root, options):
@@ -75,6 +85,10 @@ class App:
     self.fig = matplotlib.figure.Figure((5, 4))
     self.ax = self.fig.add_subplot()
 
+    self.shift_down = False
+    
+    self.fig.canvas.mpl_connect("key_press_event", self._on_key_press)
+    self.fig.canvas.mpl_connect("key_release_event", self._on_key_release)
     self.fig.canvas.mpl_connect("button_press_event", self._on_click)
     
     self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
@@ -95,12 +109,20 @@ class App:
     self.toolbar.update()
 
     self.start_trim_var = tk.IntVar()
-    self.start_trim_var.trace_add("write", lambda *args: self._update_start_trim())
+    self.start_trim_var.trace_add("write", lambda *args: self._update_trim())
     self.start_trim_widget = tk.Scale(
       root,
       from_=0, to=0, resolution=1,
       variable=self.start_trim_var, orient=tk.HORIZONTAL,
       label="start trim [samples]"
+    )
+    self.end_trim_var = tk.IntVar()
+    self.end_trim_var.trace_add("write", lambda *args: self._update_trim())
+    self.end_trim_widget = tk.Scale(
+      root,
+      from_=0, to=0, resolution=1,
+      variable=self.end_trim_var, orient=tk.HORIZONTAL,
+      label="end trim [samples]"
     )
 
     # selected_onsets can be
@@ -122,6 +144,7 @@ class App:
     
     widgets = [
       self.start_trim_widget,
+      self.end_trim_widget,
       self.range_duration_frame
     ]
     for widget in widgets[::-1]:
@@ -149,10 +172,12 @@ class App:
     self.ax.set_xlabel("time [s]")
     self.ax.set_ylabel("amplitude")
 
-    self.start_trim_widget.configure(to=max(0, self.analysis.num_samples-2))
+    self.start_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
+    self.end_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
 
     self.start_trim_var.set(0)
-    self._update_start_trim(draw=False)
+    self.end_trim_var.set(self.analysis.num_samples-1)
+    self._update_trim(draw=False)
     self.selected_onsets = None
     self._update_selected_onsets(draw=False)
 
@@ -163,7 +188,19 @@ class App:
     if path:
       self.open_file(path)
 
+  def _on_key_press(self, event):
+    if event.key == "shift":
+      self.shift_down = True
+
+  def _on_key_release(self, event):
+    if event.key == "shift":
+      self.shift_down = False
+      
   def _on_click(self, event):
+    if str(self.toolbar.mode):
+      # pan or zoom is enabled, so don't handle click
+      return
+    
     t = event.xdata
     if t is None or self.analysis is None:
       return
@@ -178,11 +215,52 @@ class App:
     if onset0 is not None:
       onset1 = onset0 + 1 if onset0 < len(self.analysis.onsets)-1 else None
 
-    self.selected_onsets = (onset0, onset1)
+    self.selected_onsets = self._alter_selected_onsets(self.selected_onsets, (onset0, onset1), combine=self.shift_down)
     self._update_selected_onsets()
+
+  @classmethod
+  def _alter_selected_onsets(cls, selected_onsets_prev, selected_onsets, combine):
+    if combine and selected_onsets_prev is not None:
+      onset0_prev, onset1_prev = selected_onsets_prev
+      onset0, onset1 = selected_onsets
+      return (cls._min_left_onset(onset0_prev, onset0), cls._max_right_onset(onset1_prev, onset1))
+    else:
+      return selected_onsets
     
-  def _update_start_trim(self, draw=True):
-    self.plots.update_start_trim(self.start_trim_var.get())
+  @classmethod
+  def _min_left_onset(cls, a, b):
+    if a is None or b is None:
+      return None
+    else:
+      return min(a, b)
+
+  @classmethod
+  def _max_left_onset(cls, a, b):
+    if a is None:
+      return b
+    elif b is None:
+      return a
+    else:
+      return min(a, b)
+  
+  @classmethod
+  def _min_right_onset(cls, a, b):
+    if a is None:
+      return b
+    elif b is None:
+      return a
+    else:
+      return max(a, b)
+    
+  @classmethod
+  def _max_right_onset(cls, a, b):
+    if a is None or b is None:
+      return None
+    else:
+      return max(a, b)
+    
+  def _update_trim(self, draw=True):
+    self.plots.update_trim(self.start_trim_var.get(), self.end_trim_var.get())
     if draw:
       self.fig.canvas.draw_idle()
 

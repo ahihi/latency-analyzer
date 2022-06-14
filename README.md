@@ -7,6 +7,12 @@ conda create --no-shortcuts -c conda-forge -n latency-analyzer python numpy sort
 source activate latency-analyzer
 ```
 
+if you want to use `time-receiver.py`, also run:
+
+```
+pip install python-osc
+```
+
 ## usage
 
 ```
