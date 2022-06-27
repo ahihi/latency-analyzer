@@ -12,7 +12,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import filedialog
 
-from .analysis import Analysis
+from .analysis import BonkAnalysis
 
 class FilePlots:
   def __init__(self, ax, analysis, colors=()):
@@ -156,7 +156,7 @@ class App:
 
   def open_file(self, path):
     audio, sample_rate = librosa.load(path, sr=None, mono=False)
-    self.analysis = Analysis(audio, sample_rate,
+    self.analysis = BonkAnalysis(audio, sample_rate,
       onset_detect_kwargs={
         "units": "time",
         "hop_length": self.options.onsets_hop_length,
