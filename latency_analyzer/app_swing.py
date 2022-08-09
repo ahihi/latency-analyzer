@@ -16,8 +16,9 @@ from tkinter import filedialog
 from .analysis import SwingAnalysis
 
 class FilePlots:
-  def __init__(self, ax, analysis, colors=()):
-    self.ax = ax
+  def __init__(self, ax0, ax1, analysis, colors=()):
+    self.ax0 = ax0
+    self.ax1 = ax1
     self.analysis = analysis
     self.colors = colors
     self.time = np.linspace(0.0, self.analysis.duration, self.analysis.num_samples)
@@ -27,30 +28,36 @@ class FilePlots:
 
     self.mic_sig_plot = librosa.display.waveshow(
       self.analysis.mic_sig, sr=self.analysis.sample_rate,
-      label="mic", color=self.mic_color, alpha=0.75, ax=self.ax
+      label="mic", color=self.mic_color, alpha=0.25, ax=self.ax0
     )
-    env_ixs = self.analysis.mic_env_ixs_hi
-    self.mic_env_plot = self.ax.plot(
-      self.time[env_ixs], self.analysis.mic_sig[env_ixs],
-      label=f"mic envelope", color="k", alpha=0.75
+    self.mic_env_plot = self.ax0.plot(
+      self.time, self.analysis.mic_env,
+      label=f"mic envelope", color="k", alpha=1, linewidth=0.5
     )[0]
 
+    self.render_sig_plot = librosa.display.waveshow(
+      self.analysis.render_sig, sr=self.analysis.sample_rate,
+      label="render", color=self.render_color, alpha=0.25, ax=self.ax1
+    )
+    self.render_env_plot = self.ax1.plot(
+      self.time, self.analysis.render_env,
+      label=f"render envelope", color="k", alpha=1, linewidth=0.5
+    )[0]
+    
     # self.render_plot = librosa.display.waveshow(
     #   self.analysis.render_sig, sr=self.analysis.sample_rate,
     #   label="render", color=self.colors[1], alpha=0.75, ax=self.ax
     # )
 
-  # def _plot_channel(self, i):
-  #   channel_num = self.analysis.channel_indices[i]
-  #   color = self.colors[i] if i < len(self.colors) else "k"
-  #   channel_analysis = self.analysis.channels[i]
-  #   return SimpleNamespace(
-  #     wave = self.ax.plot(self.time, channel_analysis.audio, label=f"wave {channel_num}", color=color, alpha=0.75)[0]
-  #   )
-
   def update_trim(self, start, end):
-    # start_time = start*self.analysis.sample_duration
-    # end_time = end*self.analysis.sample_duration
+    start_time = start*self.analysis.sample_duration
+    end_time = end*self.analysis.sample_duration
+
+    self.mic_env_plot.set_data(self.time[start:end+1], self.analysis.mic_env[start:end+1])
+    self.render_env_plot.set_data(self.time[start:end+1], self.analysis.render_env[start:end+1])
+    
+    for ax in (self.ax0, self.ax1):
+      ax.set_xlim(self.time[start], self.time[end])
     
     # for channel_analysis, channel_plots in zip(self.analysis.channels, self.channels):
     #   channel_plots.wave.set_data(self.time[start:end+1], channel_analysis.audio[start:end+1])
@@ -65,8 +72,12 @@ class App:
     
     self.analysis = None
     self.time = None
-    self.fig = matplotlib.figure.Figure((5, 4))
-    self.ax = self.fig.add_subplot()
+    self.fig = matplotlib.figure.Figure((16, 7))
+    self.gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1])
+    self.ax0 = self.fig.add_subplot(self.gs[0])
+    self.ax1 = self.fig.add_subplot(self.gs[1])
+    self.fig.tight_layout(pad=4)
+    # self.fig.subplots_adjust(left=0, right=1, bottom=0, top=1, hspace=0.0)
 
     self.shift_down = False
     
@@ -107,7 +118,7 @@ class App:
       variable=self.end_trim_var, orient=tk.HORIZONTAL,
       label="end trim [samples]"
     )
-
+    
     # pack widgets
     
     widgets = [
@@ -122,6 +133,7 @@ class App:
 
   def open_file(self, path):
     audio, sample_rate = librosa.load(path, sr=None, mono=False)
+    
     self.analysis = SwingAnalysis(audio, sample_rate,
       onset_detect_kwargs={
         "units": "time",
@@ -130,20 +142,29 @@ class App:
       },
       channels=self.options.analysis_channels
     )
-    self.ax.clear()
-    self.plots = FilePlots(self.ax, self.analysis, self.options.analysis_channel_colors)
+    self.ax0.clear()
+    self.ax1.clear()
+    self.plots = FilePlots(self.ax0, self.ax1, self.analysis, self.options.analysis_channel_colors)
 
-    self.ax.legend()
     filename = os.path.basename(path)
-    self.ax.set_title(f"{filename} ({sample_rate} Hz)")
-    self.ax.set_xlabel("time [s]")
-    self.ax.set_ylabel("amplitude")
+
+    self.ax0.legend()
+    self.ax0.set_title(f"{filename} ({sample_rate} Hz)")
+    self.ax0.set_xlabel("time [s]")
+    self.ax0.set_ylabel("amplitude")
+
+    self.ax1.legend()
+    self.ax1.set_xlabel("time [s]")
+    self.ax1.set_ylabel("amplitude")
 
     self.start_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
     self.end_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
 
-    self.start_trim_var.set(0)
-    self.end_trim_var.set(self.analysis.num_samples-1)
+    start_frame = int(self.options.start * sample_rate)
+    end_frame = start_frame + int(self.options.length * sample_rate) if self.options.length is not None else self.analysis.num_samples-1
+    
+    self.start_trim_var.set(start_frame)
+    self.end_trim_var.set(end_frame)
     self._update_trim(draw=False)
 
     self.fig.canvas.draw_idle()

@@ -3,19 +3,40 @@ import numpy as np
 import scipy
 import sortednp
 
+import time
+
 def peak_normalize(audio, minimum=-1.0, maximum=1.0):
   return (audio - np.min(audio)) / (np.max(audio) - np.min(audio)) * (maximum - minimum) + minimum
 
-def envelope(audio):
-  # analytic = scipy.signal.hilbert(np.concatenate((audio[::-1], audio)))
-  # return np.abs(analytic[len(audio):])
-  return audio[hi_i]
+def envelope_rms(audio, win_len=2000):
+  win_len_half = win_len // 2
+  squared = np.power(audio, 2)
+  padded = np.pad(squared, (win_len_half, win_len_half-1), "constant", constant_values=(0,0))
+  window = np.ones(win_len) / win_len
+  env = np.sqrt(np.convolve(padded, window, "valid"))
+  
+  # normalizes already
+  env = env - np.mean(env)
+  env = env / np.max(np.abs(env))
+  
+  assert env.shape[0] == audio.shape[0], f"{env.shape[0]} != {audio.shape[0]}" 
+  return env
+  
+def envelope_hilbert(audio):
+  analytic_signal = scipy.signal.hilbert(audio)
+  env = np.abs(analytic_signal)
+  assert env.shape[0] == audio.shape[0], f"{env.shape[0]} != {audio.shape[0]}"
+  env = env - np.mean(env)
+  return env
 
 # https://dsp.stackexchange.com/a/74822
 def rolling_rms(x, n):
   x = np.concatenate(([0], x))
   xc = np.cumsum(abs(x)**2);
   return np.sqrt((xc[n:] - xc[:-n]) / n)
+
+def xcorr(a, b):
+  return scipy.signal.correlate(a, b)
 
 def hl_envelopes_idx(s, dmin=1, dmax=1, split=False):
     """
@@ -94,13 +115,15 @@ class SwingAnalysis:
 
     self.channel_indices = channels if channels is not None else range(self.num_channels)
 
+    print("peak normalize mic")
     self.mic_sig = peak_normalize(self.audio[0,:])
+    print("peak normalize render")
     self.render_sig = peak_normalize(self.audio[1,:])
-
-    ixs_lo, ixs_hi = hl_envelopes_idx(self.mic_sig)
-    self.mic_env_ixs_hi = ixs_hi
     
-    # self.channels = [BonkChannelAnalysis(self.audio[i,:], self.sample_rate, onset_detect_kwargs) for i in self.channel_indices]
-    # self.onsets = sortednp.kway_merge(*(channel_analysis.onsets for channel_analysis in self.channels))
-
+    print("compute mic envelope")
+    self.mic_env = envelope_rms(self.mic_sig, 16000)
+    
+    print("compute render envelope")
+    self.render_env = envelope_hilbert(self.render_sig)
+    
     # self.abs_max_amplitude = max(self.channels, key=lambda ca: ca.abs_max_amplitude).abs_max_amplitude
