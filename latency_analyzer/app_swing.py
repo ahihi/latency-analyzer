@@ -13,12 +13,13 @@ import numpy as np
 import tkinter as tk
 from tkinter import filedialog
 
-from .analysis import SwingAnalysis
+from .analysis import SwingAnalysis, truncate_to_even
 
 class FilePlots:
-  def __init__(self, ax0, ax1, analysis, colors=()):
+  def __init__(self, ax0, ax1, ax2, analysis, colors=()):
     self.ax0 = ax0
     self.ax1 = ax1
+    self.ax2 = ax2
     self.analysis = analysis
     self.colors = colors
     self.time = np.linspace(0.0, self.analysis.duration, self.analysis.num_samples)
@@ -34,6 +35,10 @@ class FilePlots:
       self.time, self.analysis.mic_env,
       label=f"mic envelope", color="k", alpha=1, linewidth=0.5
     )[0]
+    # self.mic_env_plot2 = self.ax0.plot(
+    #   self.time, self.analysis.mic_env2,
+    #   label=f"mic envelope", color="b", alpha=1, linewidth=0.5
+    # )[0]
 
     self.render_sig_plot = librosa.display.waveshow(
       self.analysis.render_sig, sr=self.analysis.sample_rate,
@@ -43,6 +48,17 @@ class FilePlots:
       self.time, self.analysis.render_env,
       label=f"render envelope", color="k", alpha=1, linewidth=0.5
     )[0]
+
+    self.corr_raw_plot = self.ax2.plot(
+      self.analysis.corr_lags_s, self.analysis.corr_raw,
+      color="k", alpha=0.25, linewidth=0.5
+    )
+    self.corr_plot = self.ax2.plot(
+      self.analysis.corr_lags_s, self.analysis.corr,
+      color="k", alpha=1, linewidth=0.5
+    )
+    # self.corr_max_plot = self.ax2.plot([self.analysis.lag], [self.analysis.max_corr], "o", color="r", markersize=2)
+    self.corr_max_vlines = self.ax2.vlines([self.analysis.lag], -1.0, 1.0, color="r", alpha=1, linestyle="-", linewidth=0.5, label=f"max. correlation lag = {self.analysis.lag*1000:.01f} ms")
     
     # self.render_plot = librosa.display.waveshow(
     #   self.analysis.render_sig, sr=self.analysis.sample_rate,
@@ -73,11 +89,14 @@ class App:
     self.analysis = None
     self.time = None
     self.fig = matplotlib.figure.Figure((16, 7))
-    self.gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1])
-    self.ax0 = self.fig.add_subplot(self.gs[0])
-    self.ax1 = self.fig.add_subplot(self.gs[1])
-    self.fig.tight_layout(pad=4)
-    # self.fig.subplots_adjust(left=0, right=1, bottom=0, top=1, hspace=0.0)
+    self.gs = gridspec.GridSpec(2, 1, height_ratios=[2,1], wspace=0.0)
+    self.env_gs = self.gs[0].subgridspec(2, 1, height_ratios=[1,1], wspace=0.0, hspace=0.0)
+    self.ax0 = self.fig.add_subplot(self.env_gs[0])
+    self.ax1 = self.fig.add_subplot(self.env_gs[1], sharex=self.ax0)
+    self.ax2 = self.fig.add_subplot(self.gs[1])
+    self.axs = (self.ax0, self.ax1, self.ax2)
+    # self.env_gs.tight_layout(self.fig, pad=4)
+    # self.fig.subplots_adjust(hspace=0.0)
 
     self.shift_down = False
     
@@ -131,8 +150,11 @@ class App:
     self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
-  def open_file(self, path):
+  def open_file(self, path, force_even=True):
     audio, sample_rate = librosa.load(path, sr=None, mono=False)
+
+    if force_even:
+      audio = truncate_to_even(audio)
     
     self.analysis = SwingAnalysis(audio, sample_rate,
       onset_detect_kwargs={
@@ -142,21 +164,30 @@ class App:
       },
       channels=self.options.analysis_channels
     )
-    self.ax0.clear()
-    self.ax1.clear()
-    self.plots = FilePlots(self.ax0, self.ax1, self.analysis, self.options.analysis_channel_colors)
+
+    for ax in self.axs:
+      ax.clear()
+
+    self.plots = FilePlots(self.ax0, self.ax1, self.ax2, self.analysis, self.options.analysis_channel_colors)
 
     filename = os.path.basename(path)
 
-    self.ax0.legend()
     self.ax0.set_title(f"{filename} ({sample_rate} Hz)")
+
+    self.ax0.legend(loc="upper right")
     self.ax0.set_xlabel("time [s]")
     self.ax0.set_ylabel("amplitude")
+    self.ax0.get_xaxis().set_visible(False)
 
-    self.ax1.legend()
+    self.ax1.legend(loc="upper right")
     self.ax1.set_xlabel("time [s]")
     self.ax1.set_ylabel("amplitude")
 
+    self.ax2.legend(loc="upper right")
+    self.ax2.set_xlabel("lag [s]")
+    self.ax2.set_ylabel("correlation")
+
+    
     self.start_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
     self.end_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
 

@@ -5,8 +5,17 @@ import sortednp
 
 import time
 
-def peak_normalize(audio, minimum=-1.0, maximum=1.0):
-  return (audio - np.min(audio)) / (np.max(audio) - np.min(audio)) * (maximum - minimum) + minimum
+def peak_normalize(x):
+  x = x - np.mean(x)
+  x = x / np.max(np.abs(x))
+  return x
+
+def truncate_to_even(x, axis=-1):
+  length = x.shape[axis]
+  if length % 2 != 0:
+    return np.take(x, range(length-1), axis=axis)
+  else:
+    return x
 
 def envelope_rms(audio, win_len=2000):
   win_len_half = win_len // 2
@@ -14,19 +23,26 @@ def envelope_rms(audio, win_len=2000):
   padded = np.pad(squared, (win_len_half, win_len_half-1), "constant", constant_values=(0,0))
   window = np.ones(win_len) / win_len
   env = np.sqrt(np.convolve(padded, window, "valid"))
-  
-  # normalizes already
-  env = env - np.mean(env)
-  env = env / np.max(np.abs(env))
+
+  # env[0] = 0.0
+  # for i in range(1, win_len_half):
+  #   env[i] = np.mean(audio[:i]**2)
+
+  # for i in range(len(audio) - win_len_half + 1, len(audio)):
+  #   env[i] = np.mean(audio[i - win_len_half : i + win_len_half]**2)
+    
+  env = peak_normalize(env)
   
   assert env.shape[0] == audio.shape[0], f"{env.shape[0]} != {audio.shape[0]}" 
   return env
-  
-def envelope_hilbert(audio):
-  analytic_signal = scipy.signal.hilbert(audio)
-  env = np.abs(analytic_signal)
-  assert env.shape[0] == audio.shape[0], f"{env.shape[0]} != {audio.shape[0]}"
-  env = env - np.mean(env)
+
+def envelope_hilbert(x):
+  mean = np.mean(x)
+  x_centered = x - mean
+  env = np.abs(scipy.signal.hilbert(x_centered))
+  # env = np.abs(scipy.fftpack.hilbert(x_centered))
+  env = env + mean
+  assert env.shape[0] == x.shape[0], f"{env.shape[0]} != {x.shape[0]}"
   return env
 
 # https://dsp.stackexchange.com/a/74822
@@ -35,40 +51,18 @@ def rolling_rms(x, n):
   xc = np.cumsum(abs(x)**2);
   return np.sqrt((xc[n:] - xc[:-n]) / n)
 
-def xcorr(a, b):
-  return scipy.signal.correlate(a, b)
-
-def hl_envelopes_idx(s, dmin=1, dmax=1, split=False):
-    """
-    Input :
-    s: 1d-array, data signal from which to extract high and low envelopes
-    dmin, dmax: int, optional, size of chunks, use this if the size of the input signal is too big
-    split: bool, optional, if True, split the signal in half along its mean, might help to generate the envelope in some cases
-    Output :
-    lmin,lmax : high/low envelope idx of input signal s
-    """
-
-    # locals min      
-    lmin = (np.diff(np.sign(np.diff(s))) > 0).nonzero()[0] + 1 
-    # locals max
-    lmax = (np.diff(np.sign(np.diff(s))) < 0).nonzero()[0] + 1 
+# https://stackoverflow.com/q/43652911
+def xcorr_unbiased(x, y):
+  assert x.size == y.size, f"x.size={x.size} != y.size={y.size}"
     
+  corr = scipy.signal.correlate(x, y)
+  # corr = np.correlate(x, y, "full") # takes forever
 
-    if split:
-        # s_mid is zero if s centered around x-axis or more generally mean of signal
-        s_mid = np.mean(s) 
-        # pre-sorting of locals min based on relative position with respect to s_mid 
-        lmin = lmin[s[lmin]<s_mid]
-        # pre-sorting of local max based on relative position with respect to s_mid 
-        lmax = lmax[s[lmax]>s_mid]
+  lags = np.arange(-(x.size - 1), x.size)
 
-
-    # global max of dmax-chunks of locals max 
-    lmin = lmin[[i+np.argmin(s[lmin[i:i+dmin]]) for i in range(0,len(lmin),dmin)]]
-    # global min of dmin-chunks of locals min 
-    lmax = lmax[[i+np.argmax(s[lmax[i:i+dmax]]) for i in range(0,len(lmax),dmax)]]
-    
-    return lmin,lmax
+  corr /= (x.size - np.abs(lags))
+  
+  return corr, lags
 
 class BonkChannelAnalysis:
   def __init__(self, audio, sample_rate, onset_detect_kwargs={}):
@@ -107,6 +101,10 @@ class SwingAnalysis:
     if self.num_channels < 2:
       raise ValueError(f"expected at least 2 channels, got {self.num_channels}")
 
+    env_trim = 1 * sample_rate
+    win_len = 30 * sample_rate + 2*env_trim
+    audio = np.take(audio, range(win_len), -1)
+
     self.audio = audio
     self.sample_rate = sample_rate
     self.sample_duration = 1.0 / sample_rate
@@ -116,14 +114,65 @@ class SwingAnalysis:
     self.channel_indices = channels if channels is not None else range(self.num_channels)
 
     print("peak normalize mic")
-    self.mic_sig = peak_normalize(self.audio[0,:])
+    self.mic_sig = self.audio[0,:]
+    self.mic_sig = self.mic_sig / np.max(np.abs(self.mic_sig))
+
     print("peak normalize render")
-    self.render_sig = peak_normalize(self.audio[1,:])
+    self.render_sig = self.audio[1,:]
+    self.render_sig = self.render_sig / np.max(np.abs(self.render_sig))
     
     print("compute mic envelope")
-    self.mic_env = envelope_rms(self.mic_sig, 16000)
+    self.mic_env = envelope_rms(self.mic_sig, 2000)
     
     print("compute render envelope")
-    self.render_env = envelope_hilbert(self.render_sig)
+    self.render_env = peak_normalize(envelope_hilbert(self.render_sig))
+
+    print("find swing frequency... ", end="")
+
+    mic_env_trimmed = np.take(self.mic_env, range(env_trim, win_len-env_trim), -1)
+    render_env_trimmed = np.take(self.render_env, range(env_trim, win_len-env_trim), -1)
+
+    n_fft = 2**23
+    fax = scipy.fft.rfftfreq(n_fft, 1/self.sample_rate)
+    fft = scipy.fft.fft(render_env_trimmed, n_fft)
+    fft_nonneg = fft[:len(fax)]
+    # ignore very low frequencies
+    fft_nonneg[fax < 0.2] = 0.0
+
+    i_max = np.argmax(np.abs(fft_nonneg))
+    swing_freq = fax[i_max]
     
-    # self.abs_max_amplitude = max(self.channels, key=lambda ca: ca.abs_max_amplitude).abs_max_amplitude
+    print(f"{swing_freq:.03} Hz")
+
+    f_estimate = fax[i_max+1]
+    t_estimate = 1/f_estimate
+    t_estimate_samp = np.ceil(t_estimate * self.sample_rate)
+
+    print("correlate")
+
+    corr, lags = xcorr_unbiased(render_env_trimmed, mic_env_trimmed)
+    
+    corr = corr / np.max(corr)
+
+    self.corr_raw = np.copy(corr)
+    
+    t_estimate_samp_quarter = round(t_estimate_samp/4)
+    # corr[:win_len - t_estimate_samp_quarter] = 0.0
+    # corr[win_len + t_estimate_samp_quarter - 1:] = 0.0
+
+    zero_i = len(lags)//2
+    corr[:zero_i - round(t_estimate_samp/4)] = 0.0
+    corr[zero_i + round(t_estimate_samp/4) - 1:] = 0.0
+    
+    self.corr = corr
+    self.corr_lags = lags
+    self.corr_lags_s = lags / self.sample_rate
+
+    i_max_corr = np.argmax(np.abs(corr))
+
+    # lag = (i_max_corr - win_len) / self.sample_rate
+    self.lag = self.corr_lags_s[i_max_corr]
+    self.max_corr = self.corr[i_max_corr]
+    
+    print("lag:", self.lag)
+    
