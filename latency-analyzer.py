@@ -22,13 +22,16 @@ if __name__ == "__main__":
         raise argparse.ArgumentError(None, f"argument {arg_name}: must be of form [minutes:]seconds[.decimals]")
       return float(m.group(1) or "0") * 60 + float(m.group(2))
     return _time_type
-  
+
+  # TODO: bonk/swing are diverging too much, maybe make separate argparsers
   arg_parser = argparse.ArgumentParser()
   arg_parser.add_argument("audio_file", nargs="?")
   arg_parser.add_argument("--onsets_hop_length", type=int, default=1)
   arg_parser.add_argument("--mode", type=mode_type, default="bonk")
   arg_parser.add_argument("--start", type=time_type("--start"), default=0.0)
   arg_parser.add_argument("--length", type=time_type("--length"), default=None)
+  arg_parser.add_argument("--window_length", type=int, default=None)
+  arg_parser.add_argument("--plot_window", type=int, default=None)
   
   args = arg_parser.parse_args()
 
@@ -37,7 +40,9 @@ if __name__ == "__main__":
     analysis_channels = (0, 1),
     analysis_channel_colors = ("#1a85ff", "#d41159"),
     start = args.start,
-    length = args.length
+    length = args.length,
+    win_len = args.window_length,
+    plot_win = args.plot_window
   )
   
   import tkinter as tk
@@ -48,10 +53,6 @@ if __name__ == "__main__":
 
   root = tk.Tk()
   app = app_mod.App(root, options)
-
-  if args.audio_file is not None:
-    app.open_file(args.audio_file)
-  else:
-    app.prompt_open_file()
+  app.run(args)
   
   root.mainloop()

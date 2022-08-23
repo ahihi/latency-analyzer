@@ -16,61 +16,53 @@ from tkinter import filedialog
 from .analysis import SwingAnalysis, truncate_to_even
 
 class FilePlots:
-  def __init__(self, ax0, ax1, ax2, analysis, colors=()):
+  def __init__(self, ax0, ax1, ax2, analysis, colors=(), plot_win=0):
     self.ax0 = ax0
     self.ax1 = ax1
     self.ax2 = ax2
     self.analysis = analysis
+    self.selected_result = self.analysis.results[plot_win]
     self.colors = colors
-    self.time = np.linspace(0.0, self.analysis.duration, self.analysis.num_samples)
+    self.time = np.linspace(0.0, self.analysis.win_len_s, self.analysis.win_len)
     
     self.mic_color = self.colors[0] if 0 < len(self.colors) else "k"
     self.render_color = self.colors[1] if 1 < len(self.colors) else "k"
 
     self.mic_sig_plot = librosa.display.waveshow(
-      self.analysis.mic_sig, sr=self.analysis.sample_rate,
+      self.selected_result.mic_sig, sr=self.analysis.sample_rate,
       label="mic", color=self.mic_color, alpha=0.25, ax=self.ax0
     )
     self.mic_env_plot = self.ax0.plot(
-      self.time, self.analysis.mic_env,
+      self.time, self.selected_result.mic_env,
       label=f"mic envelope", color="k", alpha=1, linewidth=0.5
     )[0]
-    # self.mic_env_plot2 = self.ax0.plot(
-    #   self.time, self.analysis.mic_env2,
-    #   label=f"mic envelope", color="b", alpha=1, linewidth=0.5
-    # )[0]
 
     self.render_sig_plot = librosa.display.waveshow(
-      self.analysis.render_sig, sr=self.analysis.sample_rate,
+      self.selected_result.render_sig, sr=self.analysis.sample_rate,
       label="render", color=self.render_color, alpha=0.25, ax=self.ax1
     )
     self.render_env_plot = self.ax1.plot(
-      self.time, self.analysis.render_env,
+      self.time, self.selected_result.render_env,
       label=f"render envelope", color="k", alpha=1, linewidth=0.5
     )[0]
 
     self.corr_raw_plot = self.ax2.plot(
-      self.analysis.corr_lags_s, self.analysis.corr_raw,
+      self.selected_result.corr_lags_s, self.selected_result.corr_raw,
       color="k", alpha=0.25, linewidth=0.5
     )
     self.corr_plot = self.ax2.plot(
-      self.analysis.corr_lags_s, self.analysis.corr,
+      self.selected_result.corr_lags_s, self.selected_result.corr,
       color="k", alpha=1, linewidth=0.5
     )
-    # self.corr_max_plot = self.ax2.plot([self.analysis.lag], [self.analysis.max_corr], "o", color="r", markersize=2)
-    self.corr_max_vlines = self.ax2.vlines([self.analysis.lag], -1.0, 1.0, color="r", alpha=1, linestyle="-", linewidth=0.5, label=f"max. correlation lag = {self.analysis.lag*1000:.01f} ms")
+    # self.corr_max_plot = self.ax2.plot([self.selected_result.lag], [self.selected_result.max_corr], "o", color="r", markersize=2)
+    self.corr_max_vlines = self.ax2.vlines([self.selected_result.lag], -1.0, 1.0, color="r", alpha=1, linestyle="-", linewidth=0.5, label=f"max. correlation lag = {self.selected_result.lag*1000:.01f} ms")
     
-    # self.render_plot = librosa.display.waveshow(
-    #   self.analysis.render_sig, sr=self.analysis.sample_rate,
-    #   label="render", color=self.colors[1], alpha=0.75, ax=self.ax
-    # )
-
   def update_trim(self, start, end):
     start_time = start*self.analysis.sample_duration
     end_time = end*self.analysis.sample_duration
 
-    self.mic_env_plot.set_data(self.time[start:end+1], self.analysis.mic_env[start:end+1])
-    self.render_env_plot.set_data(self.time[start:end+1], self.analysis.render_env[start:end+1])
+    self.mic_env_plot.set_data(self.time[start:end+1], self.selected_result.mic_env[start:end+1])
+    self.render_env_plot.set_data(self.time[start:end+1], self.selected_result.render_env[start:end+1])
     
     for ax in (self.ax0, self.ax1):
       ax.set_xlim(self.time[start], self.time[end])
@@ -79,8 +71,8 @@ class FilePlots:
     #   channel_plots.wave.set_data(self.time[start:end+1], channel_analysis.audio[start:end+1])
     # self.ax.set_xlim(self.time[start], self.time[end])
     pass
-    
-class App:
+
+class EnvsPlotWindow:
   def __init__(self, root, options):
     self.root = root
     self.root.title("latency-analyzer (swing)")
@@ -95,8 +87,6 @@ class App:
     self.ax1 = self.fig.add_subplot(self.env_gs[1], sharex=self.ax0)
     self.ax2 = self.fig.add_subplot(self.gs[1])
     self.axs = (self.ax0, self.ax1, self.ax2)
-    # self.env_gs.tight_layout(self.fig, pad=4)
-    # self.fig.subplots_adjust(hspace=0.0)
 
     self.shift_down = False
     
@@ -149,26 +139,25 @@ class App:
 
     self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-
+    
   def open_file(self, path, force_even=True):
     audio, sample_rate = librosa.load(path, sr=None, mono=False)
 
     if force_even:
       audio = truncate_to_even(audio)
     
-    self.analysis = SwingAnalysis(audio, sample_rate,
-      onset_detect_kwargs={
-        "units": "time",
-        "hop_length": self.options.onsets_hop_length,
-        "backtrack": True
-      },
-      channels=self.options.analysis_channels
+    self.analysis = SwingAnalysis(
+      audio,
+      sample_rate,
+      channels=self.options.analysis_channels,
+      win_len=self.options.win_len
     )
 
     for ax in self.axs:
       ax.clear()
 
-    self.plots = FilePlots(self.ax0, self.ax1, self.ax2, self.analysis, self.options.analysis_channel_colors)
+    self.plots = None
+    self.plots = FilePlots(self.ax0, self.ax1, self.ax2, self.analysis, self.options.analysis_channel_colors, self.options.plot_win)
 
     filename = os.path.basename(path)
 
@@ -187,13 +176,12 @@ class App:
     self.ax2.set_xlabel("lag [s]")
     self.ax2.set_ylabel("correlation")
 
-    
-    self.start_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
-    self.end_trim_widget.configure(to=max(0, self.analysis.num_samples-1))
+    self.start_trim_widget.configure(to=max(0, self.analysis.win_len-1))
+    self.end_trim_widget.configure(to=max(0, self.analysis.win_len-1))
 
     start_frame = int(self.options.start * sample_rate)
     end_frame = start_frame + int(self.options.length * sample_rate) if self.options.length is not None else self.analysis.num_samples-1
-    
+
     self.start_trim_var.set(start_frame)
     self.end_trim_var.set(end_frame)
     self._update_trim(draw=False)
@@ -220,3 +208,19 @@ class App:
     self.plots.update_trim(self.start_trim_var.get(), self.end_trim_var.get())
     if draw:
       self.fig.canvas.draw_idle()
+
+class App:
+  def __init__(self, root, options):
+    self.root = root
+    self.options = options
+
+  def run(self, args):
+    if args.plot_window is not None:
+      window = EnvsPlotWindow(self.root, self.options)
+      if args.audio_file is not None:
+        window.open_file(args.audio_file)
+      else:
+        window.prompt_open_file()
+    else:
+      pass
+

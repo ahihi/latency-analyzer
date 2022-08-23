@@ -154,6 +154,12 @@ class App:
     self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
+  def run(self, args):
+    if args.audio_file is not None:
+      app.open_file(args.audio_file)
+    else:
+      app.prompt_open_file()
+    
   def open_file(self, path):
     audio, sample_rate = librosa.load(path, sr=None, mono=False)
     self.analysis = BonkAnalysis(audio, sample_rate,
