@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from types import SimpleNamespace
 
@@ -75,7 +76,7 @@ class FilePlots:
 class EnvsPlotWindow:
   def __init__(self, root, options):
     self.root = root
-    self.root.title("latency-analyzer (swing)")
+    self.root.title("analyze-swing: envelopes & correlation")
     self.options = options
     
     self.analysis = None
@@ -150,14 +151,14 @@ class EnvsPlotWindow:
       audio,
       sample_rate,
       channels=self.options.analysis_channels,
-      win_len=self.options.win_len
+      win_len=self.options.window_length
     )
 
     for ax in self.axs:
       ax.clear()
 
     self.plots = None
-    self.plots = FilePlots(self.ax0, self.ax1, self.ax2, self.analysis, self.options.analysis_channel_colors, self.options.plot_win)
+    self.plots = FilePlots(self.ax0, self.ax1, self.ax2, self.analysis, self.options.analysis_channel_colors, self.options.plot_window)
 
     filename = os.path.basename(path)
 
@@ -209,16 +210,102 @@ class EnvsPlotWindow:
     if draw:
       self.fig.canvas.draw_idle()
 
+class BoxPlotWindow:
+  def __init__(self, root, options, group_name, group_func):
+    self.root = root
+    self.root.title(f"analyze-swing: {group_name}")
+    self.options = options
+    self.group_name = group_name
+    self.group_func = group_func
+
+    self.groups = {}
+    self.x = None
+    self.fig = matplotlib.figure.Figure((16, 7))
+    self.ax = self.fig.add_subplot()
+    self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+    self.canvas.draw() # TODO: refactor?
+
+    self.toolbar = NavigationToolbar2Tk(self.canvas, self.root, pack_toolbar=False)
+    self.toolbar.update()
+
+    self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+    self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    
+  def open_dir(self, path):
+    groups = {}
+    for fn in os.listdir(path):
+      base, ext = os.path.splitext(fn)
+      ext = ext.lower()
+      if ext != ".wav":
+        continue
+      print(fn)
+      try:
+        group_key = self.group_func(base)
+      except ValueError as e:
+        print(e.message)
+        continue
+      file_path = os.path.join(path, fn)
+      audio, sample_rate = librosa.load(file_path, sr=None, mono=False)
+      analysis = SwingAnalysis(
+        audio,
+        sample_rate,
+        channels=self.options.analysis_channels,
+        win_len=self.options.window_length
+      )
+      
+      if group_key not in groups:
+        groups[group_key] = []
+      groups[group_key].append(analysis)
+
+    self.groups = groups
+    
+    self.x = np.array(sorted(groups.keys()))
+
+    self.lags_grouped = [np.array([r.lag for a in self.groups[k] for r in a.results], dtype=np.float32) for k in self.x]
+
+    self.means_grouped = np.array([np.mean(lags) for lags in self.lags_grouped], dtype=np.float32)
+    self.stdevs_grouped = np.array([np.std(lags) for lags in self.lags_grouped], dtype=np.float32)
+
+    width = np.min(np.ediff1d(self.x)) * 0.75
+    self.ax.boxplot(self.lags_grouped, positions=self.x, widths=width)
+    
+    # self.ax.plot(
+    #   self.x, self.means_grouped,
+    #   label=f"mean lag", color="k", alpha=1, linewidth=0.5
+    # )
+
+    self.ax.set_xlabel("block size")
+    # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
+    self.ax.set_ylabel("latency")
+    
+    self.fig.canvas.draw_idle()
+
+def make_re_group_func(group_name, pattern, convert=int):
+  regex = re.compile(pattern)
+  def _group_func(filename_base):
+    m = regex.match(filename_base)
+    if not m:
+      raise ValueError(f"  no {group_name} found in filename (pattern: {pattern})")
+    return convert(m.group(1))
+  return _group_func
+    
 class App:
   def __init__(self, root, options):
     self.root = root
     self.options = options
 
-  def run(self, args):
-    if args.plot_window is not None:
+  def run(self):
+    if self.options.plot_block_size:
+      group_name = "block size"
+      window = BoxPlotWindow(
+        self.root, self.options,
+        group_name, make_re_group_func(group_name, self.options.block_size_re)
+      )
+      window.open_dir(self.options.audio_file)
+    elif self.options.plot_window is not None:
       window = EnvsPlotWindow(self.root, self.options)
-      if args.audio_file is not None:
-        window.open_file(args.audio_file)
+      if self.options.audio_file is not None:
+        window.open_file(self.options.audio_file)
       else:
         window.prompt_open_file()
     else:

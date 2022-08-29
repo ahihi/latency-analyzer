@@ -142,10 +142,12 @@ class SwingAnalysis:
 
     lags = np.array([r.lag for r in self.results], dtype=np.float32)
 
-    mean = np.mean(lags)
-    stdev = np.std(lags)
+    self.lag_sum = np.sum(lags)
+    self.count = len(self.results)
+    self.lag_mean = self.lag_sum / self.count
+    self.lag_stdev = np.std(lags)
 
-    print(f"lags mean = {mean}, stdev = {stdev}")
+    # print(f"lags mean = {self.mean}, stdev = {self.stdev}")
 
   def analyze_window(self, start, stop, include_signals=True):
     mic_sig = self.mic_sig[start:stop]

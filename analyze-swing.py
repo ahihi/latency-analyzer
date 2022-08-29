@@ -13,29 +13,33 @@ if __name__ == "__main__":
       return float(m.group(1) or "0") * 60 + float(m.group(2))
     return _time_type
 
+  def comparison_type(arg):
+    comparisons = {"block_size", "update_rate"}
+    if arg not in comparisons:
+      alternatives_str = ",".join(comparisons)
+      raise argparse.ArgumentError(None, f"argument --comparison: must be one of {alternatives_str}")
+    return arg
+
   arg_parser = argparse.ArgumentParser()
   arg_parser.add_argument("audio_file", nargs="?")
   arg_parser.add_argument("--start", type=time_type("--start"), default=0.0)
   arg_parser.add_argument("--length", type=time_type("--length"), default=None)
   arg_parser.add_argument("--window_length", type=int, default=None)
   arg_parser.add_argument("--plot_window", type=int, default=None)
+  arg_parser.add_argument("--comparison", type=comparison_type, default=None)
+  arg_parser.add_argument("--plot_block_size", action=argparse.BooleanOptionalAction)
+  arg_parser.add_argument("--block_size_re", default=r".*[ _-]block[ _-]?(\d+)")
+  arg_parser.add_argument("--update_rate_re", default=r".*[ _-]optitrack[ _-]?(\d+)")
   
   args = arg_parser.parse_args()
 
-  options = SimpleNamespace(
-    onsets_hop_length = args.onsets_hop_length,
-    analysis_channels = (0, 1),
-    analysis_channel_colors = ("#1a85ff", "#d41159"),
-    start = args.start,
-    length = args.length,
-    win_len = args.window_length,
-    plot_win = args.plot_window
-  )
-  
+  args.analysis_channels = (0, 1)
+  args.analysis_channel_colors = ("#1a85ff", "#d41159")
+    
   import tkinter as tk
 
   root = tk.Tk()
-  app = app_swing.App(root, options)
-  app.run(args)
+  app = app_swing.App(root, args)
+  app.run()
   
   root.mainloop()
