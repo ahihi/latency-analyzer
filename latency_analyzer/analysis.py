@@ -94,10 +94,11 @@ class BonkAnalysis:
     self.abs_max_amplitude = max(self.channels, key=lambda ca: ca.abs_max_amplitude).abs_max_amplitude
 
 class SwingAnalysis:
-  def __init__(self, audio, sample_rate, channels=None, win_len=None, win_hop=None, win_type="hann"):
+  def __init__(self, audio, sample_rate, channels=None, win_len=None, win_hop=None, win_type="hann", swing_freq=None, filename="<no filename>"):
     # audio coming from librosa can have shape (num_channels, num_samples) or (num_samples,)
     is_1d = len(audio.shape) == 1
     self.num_channels = 1 if is_1d else audio.shape[0]
+    self.filename = filename
 
     if self.num_channels < 2:
       raise ValueError(f"expected at least 2 channels, got {self.num_channels}")
@@ -112,7 +113,8 @@ class SwingAnalysis:
     self.win_len_s = self.win_len / self.sample_rate
     self.win_hop = round(win_hop * self.sample_rate) if win_hop is not None else self.win_len
     self.win_type = win_type
-
+    self.swing_freq = swing_freq
+    
     self.win_funcs = {
       "hann": lambda n: scipy.signal.windows.hann(n) # TODO: symmetric (default) or periodic?
     }
@@ -159,29 +161,35 @@ class SwingAnalysis:
     print("compute render envelope")
     render_env = peak_normalize(envelope_hilbert(render_sig))
 
-    print("find swing frequency... ", end="")
-
     # mic_env_trimmed = np.take(mic_env, range(self.env_trim, self.trim_win_len-self.env_trim), -1)
     mic_env_trimmed = mic_env
     # render_env_trimmed = np.take(render_env, range(self.env_trim, self.trim_win_len-self.env_trim), -1)
     render_env_trimmed = render_env
 
-    n_fft = 2**23
-    fax = scipy.fft.rfftfreq(n_fft, 1/self.sample_rate)
-    fft = scipy.fft.fft(render_env_trimmed, n_fft)
-    fft_nonneg = fft[:len(fax)]
-    # ignore very low frequencies
-    fft_nonneg[fax < 0.2] = 0.0
+    if self.swing_freq is None:
+      print("find swing frequency... ", end="")
 
-    i_max = np.argmax(np.abs(fft_nonneg))
-    swing_freq = fax[i_max]
-    
-    print(f"{swing_freq:.03} Hz")
+      n_fft = 2**23
+      fax = scipy.fft.rfftfreq(n_fft, 1/self.sample_rate)
+      fft = scipy.fft.fft(render_env_trimmed, n_fft)
+      fft_nonneg = fft[:len(fax)]
+      # ignore very low frequencies
+      fft_nonneg[fax < 0.2] = 0.0
 
-    f_estimate = fax[i_max+1]
+      i_max = np.argmax(np.abs(fft_nonneg))
+      swing_freq = fax[i_max]
+
+      print(f"{swing_freq:.03} Hz")
+
+      f_estimate = fax[i_max+1]
+    else:
+      swing_freq = self.swing_freq
+      print(f"use given swing frequency: {swing_freq:.03} Hz")
+      f_estimate = swing_freq
+
     t_estimate = 1/f_estimate
     t_estimate_samp = np.ceil(t_estimate * self.sample_rate)
-
+      
     print("correlate")
 
     corr, lags = xcorr_unbiased(render_env_trimmed, mic_env_trimmed)

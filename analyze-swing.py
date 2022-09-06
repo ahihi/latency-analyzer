@@ -27,9 +27,11 @@ if __name__ == "__main__":
   arg_parser.add_argument("--window_length", type=int, default=None)
   arg_parser.add_argument("--plot_window", type=int, default=None)
   arg_parser.add_argument("--comparison", type=comparison_type, default=None)
-  arg_parser.add_argument("--plot_block_size", action=argparse.BooleanOptionalAction)
-  arg_parser.add_argument("--block_size_re", default=r".*[ _-]block[ _-]?(\d+)")
-  arg_parser.add_argument("--update_rate_re", default=r".*[ _-]optitrack[ _-]?(\d+)")
+  arg_parser.add_argument("--swing_freq", type=float, default=None)
+  arg_parser.add_argument("--plot_groups", action=argparse.BooleanOptionalAction)
+  arg_parser.add_argument("--group_re", default=r"(?:^|[ _-])group[ _-]?(\d+)")
+  arg_parser.add_argument("--group_name", default="group")
+  arg_parser.add_argument("--name_filter_re", default=None)
   
   args = arg_parser.parse_args()
 
