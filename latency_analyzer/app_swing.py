@@ -177,27 +177,6 @@ class EnvsPlot:
     self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
-  def open_file(self, path, force_even=True):
-    audio, sample_rate = librosa.load(path, sr=None, mono=False)
-
-    if force_even:
-      audio = truncate_to_even(audio)
-    
-    self.analysis = SwingAnalysis(
-      audio,
-      sample_rate,
-      channels=self.options.analysis_channels,
-      win_len=self.options.window_length,
-      swing_freq=self.options.swing_freq
-    )
-
-    self.fig.canvas.draw_idle()
-    
-  def prompt_open_file(self):
-    path = filedialog.askopenfilename(filetypes=[("WAV files", ".wav")])
-    if path:
-      self.open_file(path)
-
   def _on_key_press(self, event):
     if event.key == "shift":
       self.shift_down = True
@@ -228,7 +207,7 @@ class GroupsBoxPlot:
     self.ax = self.fig.add_subplot()
     self.x = np.array(sorted(self.groups.keys()))
     
-    self.lags_grouped = [np.array([r.lag for a in self.groups[k] for r in a.results], dtype=np.float32) for k in self.x]
+    self.lags_grouped = [np.array([r.lag * 1000 for a in self.groups[k] for r in a.results], dtype=np.float32) for k in self.x]
 
     self.means_grouped = np.array([np.mean(lags) for lags in self.lags_grouped], dtype=np.float32)
     self.stdevs_grouped = np.array([np.std(lags) for lags in self.lags_grouped], dtype=np.float32)
@@ -247,7 +226,7 @@ class GroupsBoxPlot:
     self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
-    width = np.min(np.ediff1d(self.x)) * 0.75
+    width = (np.min(np.ediff1d(self.x)) if len(self.x) > 1 else 1) * 0.75
     self.ax.boxplot(self.lags_grouped, positions=self.x, widths=width)
     
     # self.ax.plot(
@@ -257,7 +236,7 @@ class GroupsBoxPlot:
 
     self.ax.set_xlabel(self.group_name)
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
-    self.ax.set_ylabel("latency")
+    self.ax.set_ylabel("latency [ms]")
 
     self.fig.canvas.draw_idle()
 
@@ -299,10 +278,18 @@ class BoxPlotWindow:
     self.selected_result_scrollbar.config(command=self.selected_result_list.yview)
     
     self.canvas_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=1)
+
+  def open_path(self, path):
+    if os.path.isdir(path):
+      files = [os.path.join(path, fn) for fn in os.listdir(path)]
+    else:
+      files = [path]
+    self.open_files(files)
     
-  def open_dir(self, path):
+  def open_files(self, files):
     groups = {}
-    for fn in os.listdir(path):
+    for file_path in files:
+      fn = os.path.basename(file_path)
       base, ext = os.path.splitext(fn)
       ext = ext.lower()
       if ext != ".wav":
@@ -315,13 +302,13 @@ class BoxPlotWindow:
       except ValueError as e:
         print(e.message)
         continue
-      file_path = os.path.join(path, fn)
       audio, sample_rate = librosa.load(file_path, sr=None, mono=False)
       analysis = SwingAnalysis(
         audio,
         sample_rate,
+        self.options.rms_win_len,
         channels=self.options.analysis_channels,
-        win_len=self.options.window_length,
+        win_len=self.options.win_len,
         swing_freq=self.options.swing_freq,
         filename=fn
       )
@@ -382,18 +369,8 @@ class App:
     self.options = options
 
   def run(self):
-    if self.options.plot_groups:
-      window = BoxPlotWindow(
-        self.root, self.options,
-        self.options.group_name, make_re_group_func(self.options.group_name, self.options.group_re)
-      )
-      window.open_dir(self.options.audio_file)
-    elif self.options.plot_window is not None:
-      window = EnvsPlotWindow(self.root, self.options)
-      if self.options.audio_file is not None:
-        window.open_file(self.options.audio_file)
-      else:
-        window.prompt_open_file()
-    else:
-      pass
-
+    window = BoxPlotWindow(
+      self.root, self.options,
+      self.options.group_name, make_re_group_func(self.options.group_name, self.options.group_re)
+    )
+    window.open_path(self.options.audio_file)

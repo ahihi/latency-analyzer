@@ -94,7 +94,7 @@ class BonkAnalysis:
     self.abs_max_amplitude = max(self.channels, key=lambda ca: ca.abs_max_amplitude).abs_max_amplitude
 
 class SwingAnalysis:
-  def __init__(self, audio, sample_rate, channels=None, win_len=None, win_hop=None, win_type="hann", swing_freq=None, filename="<no filename>"):
+  def __init__(self, audio, sample_rate, rms_win_len, channels=None, win_len=None, win_hop=None, win_type="hann", swing_freq=None, filename="<no filename>"):
     # audio coming from librosa can have shape (num_channels, num_samples) or (num_samples,)
     is_1d = len(audio.shape) == 1
     self.num_channels = 1 if is_1d else audio.shape[0]
@@ -114,6 +114,7 @@ class SwingAnalysis:
     self.win_hop = round(win_hop * self.sample_rate) if win_hop is not None else self.win_len
     self.win_type = win_type
     self.swing_freq = swing_freq
+    self.rms_win_len = rms_win_len
     
     self.win_funcs = {
       "hann": lambda n: scipy.signal.windows.hann(n) # TODO: symmetric (default) or periodic?
@@ -156,7 +157,7 @@ class SwingAnalysis:
     render_sig = self.render_sig[start:stop]
     
     print("compute mic envelope")
-    mic_env = envelope_rms(mic_sig, 2000)
+    mic_env = envelope_rms(mic_sig, self.rms_win_len)
     
     print("compute render envelope")
     render_env = peak_normalize(envelope_hilbert(render_sig))
