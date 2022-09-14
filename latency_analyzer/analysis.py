@@ -1,4 +1,5 @@
 from numbers import Number
+import os
 import time
 from types import SimpleNamespace
 
@@ -112,11 +113,12 @@ class SwingAnalysis:
   }
   default_win_type = "hann"
   
-  def __init__(self, audio, sample_rate, rms_win_len, channels=None, win_len=None, win_hop=None, win_type=None, swing_freq=None, filename="<no filename>"):
+  def __init__(self, audio, sample_rate, rms_win_len, channels=None, win_len=None, win_hop=None, win_type=None, swing_freq=None, path=None):
     # audio coming from librosa can have shape (num_channels, num_samples) or (num_samples,)
     is_1d = len(audio.shape) == 1
     self.num_channels = 1 if is_1d else audio.shape[0]
-    self.filename = filename
+    self.path = path
+    self.filename = os.path.basename(self.path) if self.path else "<no filename>"
 
     if self.num_channels < 2:
       raise ValueError(f"expected at least 2 channels, got {self.num_channels}")

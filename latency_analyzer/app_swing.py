@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -15,6 +16,21 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from .analysis import SwingAnalysis, truncate_to_even
+
+def log(value, indent=0, *args, **kwargs):
+  print(f"{'  '*indent}{value}", file=sys.stderr, *args, **kwargs)
+
+def format_quantity(value, unit):
+  suffix = f" {unit}" if unit else ""
+  return f"{value}{suffix}"
+
+def format_label(name, unit):
+  suffix = f" ({unit})" if unit else ""
+  return f"{name}{suffix}"
+
+def reveal_file(path):
+  # TODO: escape properly, this will break on paths with quotes
+  subprocess.check_call(f'explorer.exe /select,"{path}"')
 
 class FilePlots:
   def __init__(self, ax0, ax1, ax2, analysis, colors=(), plot_win=0):
@@ -93,16 +109,23 @@ class EnvsPlot:
 
     self.axs = (self.ax0, self.ax1, self.ax2)
 
+    for ax in self.axs:
+      items = [ax.title, ax.xaxis.label, ax.yaxis.label] + ax.get_xticklabels() + ax.get_yticklabels()
+      for item in items:
+        item.set_fontsize(self.options.font_size)
+    
     self.shift_down = False
     
     self.fig.canvas.mpl_connect("key_press_event", self._on_key_press)
     self.fig.canvas.mpl_connect("key_release_event", self._on_key_release)
     self.fig.canvas.mpl_connect("button_press_event", self._on_click)
 
-    self.debug_button_frame = tk.Frame(self.frame)
-    self.debug_button = tk.Button(self.debug_button_frame, text="Debug", command=self._on_debug)
+    self.actions_frame = tk.Frame(self.frame)
+    self.debug_button = tk.Button(self.actions_frame, text="Debug", command=self._on_debug)
     self.debug_button.pack(side=tk.RIGHT)
-    self.debug_button_frame.pack(side=tk.TOP, fill=tk.X)
+    self.reveal_button = tk.Button(self.actions_frame, text="Reveal", command=self._on_reveal)
+    self.reveal_button.pack(side=tk.RIGHT)
+    self.actions_frame.pack(side=tk.TOP, fill=tk.X)
 
     self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
     self.canvas.draw() # TODO: refactor?
@@ -127,7 +150,7 @@ class EnvsPlot:
       self.frame,
       from_=0, to=0, resolution=1,
       variable=self.start_trim_var, orient=tk.HORIZONTAL,
-      label="start trim [samples]"
+      label="start trim (samples)"
     )
     self.end_trim_var = tk.IntVar()
     self.end_trim_var.trace_add("write", lambda *args: self._update_trim())
@@ -135,24 +158,24 @@ class EnvsPlot:
       self.frame,
       from_=0, to=0, resolution=1,
       variable=self.end_trim_var, orient=tk.HORIZONTAL,
-      label="end trim [samples]"
+      label="end trim (samples)"
     )
 
     self.plots = None
     self.plots = FilePlots(self.ax0, self.ax1, self.ax2, self.analysis, self.options.analysis_channel_colors, self.result_i)
 
-    self.ax0.set_title(f"{self.analysis.filename} ({self.analysis.sample_rate} Hz)")
-    self.ax0.legend(loc="upper right")
-    self.ax0.set_xlabel("time [s]")
+    self.ax0.set_title(f"{self.analysis.filename} ({self.analysis.sample_rate} Hz)", fontsize=self.options.font_size)
+    self.ax0.legend(loc="upper right", fontsize=self.options.font_size)
+    self.ax0.set_xlabel("time (s)")
     self.ax0.set_ylabel("amplitude")
     self.ax0.get_xaxis().set_visible(False)
 
-    self.ax1.legend(loc="upper right")
-    self.ax1.set_xlabel("time [s]")
+    self.ax1.legend(loc="upper right", fontsize=self.options.font_size)
+    self.ax1.set_xlabel("time (s)")
     self.ax1.set_ylabel("amplitude")
 
-    self.ax2.legend(loc="upper right")
-    self.ax2.set_xlabel("lag [s]")
+    self.ax2.legend(loc="upper right", fontsize=self.options.font_size)
+    self.ax2.set_xlabel("lag (s)")
     self.ax2.set_ylabel("correlation")
 
     self.start_trim_widget.configure(to=max(0, self.analysis.win_len-1))
@@ -193,6 +216,10 @@ class EnvsPlot:
     if draw:
       self.fig.canvas.draw_idle()
 
+  def _on_reveal(self):
+    path = self.bins[self.bin_key][self.file_i].path
+    reveal_file(path)
+      
   def _on_debug(self):
     import pdb; pdb.set_trace()
 
@@ -201,21 +228,24 @@ class BinsBoxPlot:
     self.frame = frame
     self.options = options
     self.bins = bins
-    self.bin_name = self.options.bin_name
 
     self.fig = matplotlib.figure.Figure((16, 7))
     self.ax = self.fig.add_subplot()
     self.x = np.array(sorted(self.bins.keys()))
+
+    items = [self.ax.title, self.ax.xaxis.label, self.ax.yaxis.label] + self.ax.get_xticklabels() + self.ax.get_yticklabels()
+    for item in items:
+      item.set_fontsize(self.options.font_size)
     
     self.lags_binned = [np.array([r.lag * 1000 for a in self.bins[k] for r in a.results], dtype=np.float32) for k in self.x]
 
     self.means_binned = np.array([np.mean(lags) for lags in self.lags_binned], dtype=np.float32)
     self.stdevs_binned = np.array([np.std(lags) for lags in self.lags_binned], dtype=np.float32)
 
-    self.debug_button_frame = tk.Frame(self.frame)
-    self.debug_button = tk.Button(self.debug_button_frame, text="Debug", command=self._on_debug)
+    self.actions_frame = tk.Frame(self.frame)
+    self.debug_button = tk.Button(self.actions_frame, text="Debug", command=self._on_debug)
     self.debug_button.pack(side=tk.RIGHT)
-    self.debug_button_frame.pack(side=tk.TOP, fill=tk.X)
+    self.actions_frame.pack(side=tk.TOP, fill=tk.X)
 
     self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
     self.canvas.draw() # TODO: refactor?
@@ -227,6 +257,8 @@ class BinsBoxPlot:
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
     width = (np.min(np.ediff1d(self.x)) if len(self.x) > 1 else 1) * 0.75
+    self.ax.set_title(f"latency by {self.options.bin_name}", fontsize=self.options.font_size)
+    self.ax.grid(axis="y", alpha=0.5)
     self.ax.boxplot(self.lags_binned, positions=self.x, widths=width)
     
     # self.ax.plot(
@@ -234,21 +266,20 @@ class BinsBoxPlot:
     #   label=f"mean lag", color="k", alpha=1, linewidth=0.5
     # )
 
-    self.ax.set_xlabel(self.bin_name)
+    self.ax.set_xlabel(format_label(self.options.bin_name, self.options.bin_unit))
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
-    self.ax.set_ylabel("latency [ms]")
+    self.ax.set_ylabel("latency (ms)")
 
     self.fig.canvas.draw_idle()
 
   def _on_debug(self):
     import pdb; pdb.set_trace()
       
-class BoxPlotWindow:
-  def __init__(self, root, options, bin_name, bin_func):
+class PlotWindow:
+  def __init__(self, root, options, bin_func):
     self.root = root
     self.root.title(f"analyze-swing")
     self.options = options
-    self.bin_name = bin_name
     self.bin_func = bin_func
     self.name_filter_re = re.compile(self.options.name_filter_re) if self.options.name_filter_re is not None else None
     self.selectable_results = []
@@ -266,7 +297,8 @@ class BoxPlotWindow:
     self.selected_result_list = tk.Listbox(
       self.selected_result_frame,
       width=50,
-      selectmode=tk.SINGLE
+      selectmode=tk.SINGLE,
+      activestyle=tk.NONE
     )
     self.selected_result_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
     self.selected_result_list.bind('<<ListboxSelect>>', self._on_selected_result_change)
@@ -318,7 +350,7 @@ class BoxPlotWindow:
         channels=self.options.analysis_channels,
         win_len=self.options.win_len,
         swing_freq=self.options.swing_freq,
-        filename=fn
+        path=file_path
       )
       
       if bin_key not in bins:
@@ -335,7 +367,7 @@ class BoxPlotWindow:
     for key in sorted(self.bins.keys()):
       for file_i, analysis in enumerate(self.bins[key]):
         for result_i, result in enumerate(analysis.results):
-          self.selected_result_list.insert(tk.END, f"{self.options.bin_name} {key}, file {file_i}, window {result_i} -> {result.lag*1000:.02f} ms")
+          self.selected_result_list.insert(tk.END, f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)}, file {file_i}, window {result_i} -> {result.lag*1000:.02f} ms")
           self.selectable_results.append((key, file_i, result_i))
 
     self.selected_result_list.activate(0)
@@ -377,8 +409,8 @@ class App:
     self.options = options
 
   def run(self):
-    window = BoxPlotWindow(
+    window = PlotWindow(
       self.root, self.options,
-      self.options.bin_name, make_re_bin_func(self.options.bin_name, self.options.bin_re)
+      make_re_bin_func(self.options.bin_name, self.options.bin_re)
     )
     window.open_path(self.options.audio_file)
