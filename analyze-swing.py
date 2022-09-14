@@ -3,33 +3,39 @@ if __name__ == "__main__":
   import re
   from types import SimpleNamespace
 
-  from latency_analyzer import app_swing
+  from latency_analyzer import app_swing, analysis
 
-  def time_type(arg_name):
-    def _time_type(arg):
-      m = re.match(r"^(?:(\d)+:)?(\d+(?:\.\d+)?)$", arg)
-      if m is None:
-        raise argparse.ArgumentError(None, f"argument {arg_name}: must be of form [minutes:]seconds[.decimals]")
-      return float(m.group(1) or "0") * 60 + float(m.group(2))
-    return _time_type
+  def duration_type(arg_name):
+    def _duration_type(arg):
+      m = re.match(r"^\d+$", arg)
+      if m is not None:
+        return SimpleNamespace(samples=int(m.group(0)))
+        
+      m = re.match(r"^(?:(\d)+)?:(\d+(?:\.\d+)?)$", arg)
+      if m is not None:
+        return SimpleNamespace(seconds=float(m.group(1) or "0") * 60 + float(m.group(2)))
 
-  def comparison_type(arg):
-    comparisons = {"block_size", "update_rate"}
-    if arg not in comparisons:
-      alternatives_str = ",".join(comparisons)
-      raise argparse.ArgumentError(None, f"argument --comparison: must be one of {alternatives_str}")
+      raise argparse.ArgumentError(None, f"argument {arg_name}: must be a number of samples, or a duration of the form [minutes]:seconds[.decimals]")
+
+    return _duration_type
+
+  def win_type(arg):
+    alternatives = analysis.SwingAnalysis.win_types.keys()
+    if arg not in alternatives:
+      alternatives_str = ",".join(alternatives)
+      raise argparse.ArgumentError(None, f"argument --win_type: must be one of: {alternatives_str}")
     return arg
 
   arg_parser = argparse.ArgumentParser()
   arg_parser.add_argument("audio_file", nargs="?")
-  arg_parser.add_argument("--start", type=time_type("--start"), default=0.0)
-  arg_parser.add_argument("--length", type=time_type("--length"), default=None)
-  arg_parser.add_argument("--win_len", type=int, default=None)
-  arg_parser.add_argument("--comparison", type=comparison_type, default=None)
+  arg_parser.add_argument("--start", type=duration_type("--start"), default=0.0)
+  arg_parser.add_argument("--length", type=duration_type("--length"), default=None)
+  arg_parser.add_argument("--win_len", type=duration_type("--win_len"), default=None)
+  arg_parser.add_argument("--win_type", type=win_type, default=analysis.SwingAnalysis.default_win_type)
   arg_parser.add_argument("--swing_freq", type=float, default=None)
-  arg_parser.add_argument("--rms_win_len", type=float, default=2000)
-  arg_parser.add_argument("--group_re", default=r"(?:^|[ _-])group[ _-]?(\d+)")
-  arg_parser.add_argument("--group_name", default="group")
+  arg_parser.add_argument("--rms_win_len", type=duration_type("--rms_win_len"), default=2000)
+  arg_parser.add_argument("--bin_re", default=r"(?:^|[ _-])bin[ _-]?(\d+)")
+  arg_parser.add_argument("--bin_name", default="bin")
   arg_parser.add_argument("--name_filter_re", default=None)
   
   args = arg_parser.parse_args()

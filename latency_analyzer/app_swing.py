@@ -74,13 +74,13 @@ class FilePlots:
     pass
 
 class EnvsPlot:
-  def __init__(self, frame, options, groups, result_info):
+  def __init__(self, frame, options, bins, result_info):
     self.frame = frame
     self.options = options
-    self.groups = groups
+    self.bins = bins
 
-    self.group_key, self.file_i, self.result_i = result_info
-    self.analysis = self.groups[self.group_key][self.file_i]
+    self.bin_key, self.file_i, self.result_i = result_info
+    self.analysis = self.bins[self.bin_key][self.file_i]
     self.time = None
     self.fig = matplotlib.figure.Figure((16, 7))
     self.gs = gridspec.GridSpec(2, 1, height_ratios=[2,1], wspace=0.0)
@@ -196,21 +196,21 @@ class EnvsPlot:
   def _on_debug(self):
     import pdb; pdb.set_trace()
 
-class GroupsBoxPlot:
-  def __init__(self, frame, options, groups):
+class BinsBoxPlot:
+  def __init__(self, frame, options, bins):
     self.frame = frame
     self.options = options
-    self.groups = groups
-    self.group_name = self.options.group_name
+    self.bins = bins
+    self.bin_name = self.options.bin_name
 
     self.fig = matplotlib.figure.Figure((16, 7))
     self.ax = self.fig.add_subplot()
-    self.x = np.array(sorted(self.groups.keys()))
+    self.x = np.array(sorted(self.bins.keys()))
     
-    self.lags_grouped = [np.array([r.lag * 1000 for a in self.groups[k] for r in a.results], dtype=np.float32) for k in self.x]
+    self.lags_binned = [np.array([r.lag * 1000 for a in self.bins[k] for r in a.results], dtype=np.float32) for k in self.x]
 
-    self.means_grouped = np.array([np.mean(lags) for lags in self.lags_grouped], dtype=np.float32)
-    self.stdevs_grouped = np.array([np.std(lags) for lags in self.lags_grouped], dtype=np.float32)
+    self.means_binned = np.array([np.mean(lags) for lags in self.lags_binned], dtype=np.float32)
+    self.stdevs_binned = np.array([np.std(lags) for lags in self.lags_binned], dtype=np.float32)
 
     self.debug_button_frame = tk.Frame(self.frame)
     self.debug_button = tk.Button(self.debug_button_frame, text="Debug", command=self._on_debug)
@@ -227,14 +227,14 @@ class GroupsBoxPlot:
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
     width = (np.min(np.ediff1d(self.x)) if len(self.x) > 1 else 1) * 0.75
-    self.ax.boxplot(self.lags_grouped, positions=self.x, widths=width)
+    self.ax.boxplot(self.lags_binned, positions=self.x, widths=width)
     
     # self.ax.plot(
-    #   self.x, self.means_grouped,
+    #   self.x, self.means_binned,
     #   label=f"mean lag", color="k", alpha=1, linewidth=0.5
     # )
 
-    self.ax.set_xlabel(self.group_name)
+    self.ax.set_xlabel(self.bin_name)
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
     self.ax.set_ylabel("latency [ms]")
 
@@ -244,17 +244,17 @@ class GroupsBoxPlot:
     import pdb; pdb.set_trace()
       
 class BoxPlotWindow:
-  def __init__(self, root, options, group_name, group_func):
+  def __init__(self, root, options, bin_name, bin_func):
     self.root = root
     self.root.title(f"analyze-swing")
     self.options = options
-    self.group_name = group_name
-    self.group_func = group_func
+    self.bin_name = bin_name
+    self.bin_func = bin_func
     self.name_filter_re = re.compile(self.options.name_filter_re) if self.options.name_filter_re is not None else None
     self.selectable_results = []
     self.selected_result = None
 
-    self.groups = {}
+    self.bins = {}
 
     self.canvas_frame = tk.Frame(self.root)
     self.plot = None
@@ -287,21 +287,29 @@ class BoxPlotWindow:
     self.open_files(files)
     
   def open_files(self, files):
-    groups = {}
+    bins = {}
     for file_path in files:
       fn = os.path.basename(file_path)
       base, ext = os.path.splitext(fn)
       ext = ext.lower()
       if ext != ".wav":
         continue
-      if self.name_filter_re is not None and not self.name_filter_re.search(fn):
-        continue
+      if self.name_filter_re is not None:
+        m = self.name_filter_re.search(fn)
+        if not m:
+          continue
+        
       print(fn)
       try:
-        group_key = self.group_func(base)
+        bin_key = self.bin_func(base)
       except ValueError as e:
         print(e.message)
         continue
+
+      # if bin_key not in file_bins:
+      #   file_bins[bin_key] = {}
+      # file_bins[bin_key].append()
+      
       audio, sample_rate = librosa.load(file_path, sr=None, mono=False)
       analysis = SwingAnalysis(
         audio,
@@ -313,21 +321,21 @@ class BoxPlotWindow:
         filename=fn
       )
       
-      if group_key not in groups:
-        groups[group_key] = []
-      groups[group_key].append(analysis)
+      if bin_key not in bins:
+        bins[bin_key] = []
+      bins[bin_key].append(analysis)
 
-    self.groups = groups
+    self.bins = bins
     
     # populate listbox
     
     self.selected_result_list.delete(0, tk.END)
     self.selected_result_list.insert(tk.END, "aggregate")
     self.selectable_results = [None]
-    for key in sorted(self.groups.keys()):
-      for file_i, analysis in enumerate(self.groups[key]):
+    for key in sorted(self.bins.keys()):
+      for file_i, analysis in enumerate(self.bins[key]):
         for result_i, result in enumerate(analysis.results):
-          self.selected_result_list.insert(tk.END, f"{self.options.group_name} {key}, file {file_i}, window {result_i} -> {result.lag*1000:.02f} ms")
+          self.selected_result_list.insert(tk.END, f"{self.options.bin_name} {key}, file {file_i}, window {result_i} -> {result.lag*1000:.02f} ms")
           self.selectable_results.append((key, file_i, result_i))
 
     self.selected_result_list.activate(0)
@@ -350,18 +358,18 @@ class BoxPlotWindow:
 
     if result_info is None:
       # aggregate
-      self.plot = GroupsBoxPlot(self.canvas_frame, self.options, self.groups)
+      self.plot = BinsBoxPlot(self.canvas_frame, self.options, self.bins)
     else:
-      self.plot = EnvsPlot(self.canvas_frame, self.options, self.groups, result_info)
+      self.plot = EnvsPlot(self.canvas_frame, self.options, self.bins, result_info)
 
-def make_re_group_func(group_name, pattern, convert=int):
+def make_re_bin_func(bin_name, pattern, convert=int):
   regex = re.compile(pattern)
-  def _group_func(filename_base):
+  def _bin_func(filename_base):
     m = regex.search(filename_base)
     if not m:
-      raise ValueError(f"  no {group_name} found in filename (pattern: {pattern})")
+      raise ValueError(f"  no {bin_name} found in filename (pattern: {pattern})")
     return convert(m.group(1))
-  return _group_func
+  return _bin_func
     
 class App:
   def __init__(self, root, options):
@@ -371,6 +379,6 @@ class App:
   def run(self):
     window = BoxPlotWindow(
       self.root, self.options,
-      self.options.group_name, make_re_group_func(self.options.group_name, self.options.group_re)
+      self.options.bin_name, make_re_bin_func(self.options.bin_name, self.options.bin_re)
     )
     window.open_path(self.options.audio_file)

@@ -1,3 +1,4 @@
+from numbers import Number
 import time
 from types import SimpleNamespace
 
@@ -65,6 +66,17 @@ def xcorr_unbiased(x, y):
   
   return corr, lags
 
+def duration_to_samples(duration, sample_rate):
+  if isinstance(duration, Number):
+    return duration
+  
+  sum = 0
+  if hasattr(duration, "seconds"):
+    sum += round(duration.seconds * sample_rate)
+  if hasattr(duration, "samples"):
+    sum += duration.samples
+  return sum
+
 class BonkChannelAnalysis:
   def __init__(self, audio, sample_rate, onset_detect_kwargs={}):
     self.audio = audio
@@ -94,7 +106,13 @@ class BonkAnalysis:
     self.abs_max_amplitude = max(self.channels, key=lambda ca: ca.abs_max_amplitude).abs_max_amplitude
 
 class SwingAnalysis:
-  def __init__(self, audio, sample_rate, rms_win_len, channels=None, win_len=None, win_hop=None, win_type="hann", swing_freq=None, filename="<no filename>"):
+  win_types = {
+    "rect": lambda n: np.ones(n, dtype=np.float32),
+    "hann": lambda n: scipy.signal.windows.hann(n), # TODO: symmetric (default) or periodic?
+  }
+  default_win_type = "hann"
+  
+  def __init__(self, audio, sample_rate, rms_win_len, channels=None, win_len=None, win_hop=None, win_type=None, swing_freq=None, filename="<no filename>"):
     # audio coming from librosa can have shape (num_channels, num_samples) or (num_samples,)
     is_1d = len(audio.shape) == 1
     self.num_channels = 1 if is_1d else audio.shape[0]
@@ -109,16 +127,14 @@ class SwingAnalysis:
     self.num_samples = audio.shape[1]
     self.duration = self.num_samples * self.sample_duration
     self.channel_indices = channels if channels is not None else range(self.num_channels)
-    self.win_len = round(win_len * self.sample_rate) if win_len is not None else self.num_samples
+    self.win_len = duration_to_samples(win_len, self.sample_rate) if win_len is not None else self.num_samples
     self.win_len_s = self.win_len / self.sample_rate
-    self.win_hop = round(win_hop * self.sample_rate) if win_hop is not None else self.win_len
-    self.win_type = win_type
+    self.win_hop = duration_to_samples(win_hop, self.sample_rate) if win_hop is not None else self.win_len
+    self.win_type = win_type if win_type is not None else self.default_win_type
+    self.win = self.win_types[self.win_type](self.win_len)
     self.swing_freq = swing_freq
-    self.rms_win_len = rms_win_len
+    self.rms_win_len = duration_to_samples(rms_win_len, self.sample_rate)
     
-    self.win_funcs = {
-      "hann": lambda n: scipy.signal.windows.hann(n) # TODO: symmetric (default) or periodic?
-    }
     # self.env_trim = 1 * self.sample_rate
     # self.trim_win_len = 30 * self.sample_rate + 2*self.env_trim
     
@@ -162,17 +178,12 @@ class SwingAnalysis:
     print("compute render envelope")
     render_env = peak_normalize(envelope_hilbert(render_sig))
 
-    # mic_env_trimmed = np.take(mic_env, range(self.env_trim, self.trim_win_len-self.env_trim), -1)
-    mic_env_trimmed = mic_env
-    # render_env_trimmed = np.take(render_env, range(self.env_trim, self.trim_win_len-self.env_trim), -1)
-    render_env_trimmed = render_env
-
     if self.swing_freq is None:
       print("find swing frequency... ", end="")
 
       n_fft = 2**23
       fax = scipy.fft.rfftfreq(n_fft, 1/self.sample_rate)
-      fft = scipy.fft.fft(render_env_trimmed, n_fft)
+      fft = scipy.fft.fft(render_env, n_fft)
       fft_nonneg = fft[:len(fax)]
       # ignore very low frequencies
       fft_nonneg[fax < 0.2] = 0.0
@@ -193,7 +204,7 @@ class SwingAnalysis:
       
     print("correlate")
 
-    corr, lags = xcorr_unbiased(render_env_trimmed, mic_env_trimmed)
+    corr, lags = xcorr_unbiased(render_env, mic_env)
     
     corr = corr / np.max(corr)
 
