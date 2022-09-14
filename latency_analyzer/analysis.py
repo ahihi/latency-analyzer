@@ -113,22 +113,14 @@ class SwingAnalysis:
   }
   default_win_type = "hann"
   
-  def __init__(self, audio, sample_rate, rms_win_len, channels=None, win_len=None, win_hop=None, win_type=None, swing_freq=None, path=None):
-    # audio coming from librosa can have shape (num_channels, num_samples) or (num_samples,)
-    is_1d = len(audio.shape) == 1
-    self.num_channels = 1 if is_1d else audio.shape[0]
+  def __init__(self, mic_sig, render_sig, sample_rate, rms_win_len, win_len=None, win_hop=None, win_type=None, swing_freq=None, path=None):
     self.path = path
     self.filename = os.path.basename(self.path) if self.path else "<no filename>"
 
-    if self.num_channels < 2:
-      raise ValueError(f"expected at least 2 channels, got {self.num_channels}")
-
-    self.audio = audio
     self.sample_rate = sample_rate
     self.sample_duration = 1.0 / sample_rate
-    self.num_samples = audio.shape[1]
+    self.num_samples = len(mic_sig)
     self.duration = self.num_samples * self.sample_duration
-    self.channel_indices = channels if channels is not None else range(self.num_channels)
     self.win_len = duration_to_samples(win_len, self.sample_rate) if win_len is not None else self.num_samples
     self.win_len_s = self.win_len / self.sample_rate
     self.win_hop = duration_to_samples(win_hop, self.sample_rate) if win_hop is not None else self.win_len
@@ -140,12 +132,12 @@ class SwingAnalysis:
     # self.env_trim = 1 * self.sample_rate
     # self.trim_win_len = 30 * self.sample_rate + 2*self.env_trim
     
-    print("peak normalize mic")
-    self.mic_sig = self.audio[0,:]
+    print("normalize mic")
+    self.mic_sig = mic_sig
     self.mic_sig = self.mic_sig / np.max(np.abs(self.mic_sig))
 
-    print("peak normalize render")
-    self.render_sig = self.audio[1,:]
+    print("normalize render")
+    self.render_sig = render_sig
     self.render_sig = self.render_sig / np.max(np.abs(self.render_sig))
 
     self.results = []
@@ -222,7 +214,7 @@ class SwingAnalysis:
     
     corr_lags = lags
     corr_lags_s = lags / self.sample_rate
-
+    
     i_max_corr = np.argmax(np.abs(corr))
 
     # lag = (i_max_corr - self.trim_win_len) / self.sample_rate
@@ -240,7 +232,7 @@ class SwingAnalysis:
       signals["corr"] = corr
       signals["corr_raw"] = corr_raw
       signals["corr_lags"] = corr_lags
-      signals["corr_lags_s"] = corr_lags
+      signals["corr_lags_s"] = corr_lags_s
     
     return SimpleNamespace(
       start = start,

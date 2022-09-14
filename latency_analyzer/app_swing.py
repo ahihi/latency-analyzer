@@ -17,7 +17,7 @@ from tkinter import filedialog, ttk
 
 from .analysis import SwingAnalysis, truncate_to_even
 
-def log(value, indent=0, *args, **kwargs):
+def log(value="", indent=0, *args, **kwargs):
   print(f"{'  '*indent}{value}", file=sys.stderr, *args, **kwargs)
 
 def format_quantity(value, unit):
@@ -319,7 +319,9 @@ class PlotWindow:
     self.open_files(files)
     
   def open_files(self, files):
-    bins = {}
+    log("group files")
+    
+    groups = {}
     for file_path in files:
       fn = os.path.basename(file_path)
       base, ext = os.path.splitext(fn)
@@ -330,27 +332,74 @@ class PlotWindow:
         m = self.name_filter_re.search(fn)
         if not m:
           continue
+
+        group = m.groups()
+        if not group:
+          group = (fn,)
+
+        if group not in groups:
+          groups[group] = []
+        groups[group].append(file_path)
+
+    mic_file_i, mic_channel_i = self.options.mic_channel
+    render_file_i, render_channel_i = self.options.render_channel
+    
+    for group_key, group_files in groups.items():
+      log(f"{group_key}", indent=1)
+      group_files.sort(key=lambda s: s.lower())
+      for i, path in enumerate(group_files):
+        fn = os.path.basename(path)
+        log(f"[{i}] {fn}", indent=2)
         
-      print(fn)
+        if i == mic_file_i:
+          log(f"[{mic_channel_i}] mic channel", indent=3)
+
+        if i == render_file_i:
+          log(f"[{render_channel_i}] render channel", indent=3)
+
+    log()
+
+    bins = {}
+    for group_key, group_files in groups.items():    
+      print(group_key)
       try:
-        bin_key = self.bin_func(base)
+        bin_key = self.bin_func(group_key[0]) # TODO: kinda arbitrary choice...
       except ValueError as e:
         print(e.message)
         continue
 
-      # if bin_key not in file_bins:
-      #   file_bins[bin_key] = {}
-      # file_bins[bin_key].append()
+      # read only the necessary files, and only once
       
-      audio, sample_rate = librosa.load(file_path, sr=None, mono=False)
+      file_signals = {}
+      for file_i in (mic_file_i, render_file_i):
+        if file_i not in file_signals:
+          file_signals[file_i] = librosa.load(group_files[file_i], sr=None, mono=False)
+
+      # extract mic and render channels
+          
+      mic_sig, mic_sample_rate = file_signals[mic_file_i]
+      if len(mic_sig.shape) == 1:
+        mic_sig = mic_sig.reshape((1,-1))
+      mic_sig = mic_sig[mic_channel_i, :]
+
+      render_sig, render_sample_rate = file_signals[render_file_i]
+      if len(render_sig.shape) == 1:
+        render_sig = render_sig.reshape((1,-1))
+      render_sig = render_sig[render_channel_i, :]
+
+      assert mic_sample_rate == render_sample_rate
+      assert mic_sig.shape == render_sig.shape
+
+      sample_rate = mic_sample_rate
+      
       analysis = SwingAnalysis(
-        audio,
+        mic_sig,
+        render_sig,
         sample_rate,
         self.options.rms_win_len,
-        channels=self.options.analysis_channels,
         win_len=self.options.win_len,
         swing_freq=self.options.swing_freq,
-        path=file_path
+        path=group_files[0]
       )
       
       if bin_key not in bins:

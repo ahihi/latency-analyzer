@@ -26,10 +26,22 @@ if __name__ == "__main__":
       raise argparse.ArgumentError(None, f"argument --win_type: must be one of: {alternatives_str}")
     return arg
 
+  def file_channel_type(arg_name):
+    def _file_channel_type(arg):
+      m = re.match(r"^(?:(\d+):)?(\d+)$", arg)
+      if m is None:
+        raise argparse.ArgumentError(None, f"argument {arg_name}: must have form [file_index:]channel_index")
+      file_i = int(m.group(1) or "0")
+      channel_i = int(m.group(2))
+      return (file_i, channel_i)
+    return _file_channel_type
+  
   arg_parser = argparse.ArgumentParser()
   arg_parser.add_argument("audio_file", nargs="?")
   arg_parser.add_argument("--start", type=duration_type("--start"), default=0.0)
   arg_parser.add_argument("--length", type=duration_type("--length"), default=None)
+  arg_parser.add_argument("--mic_channel", type=file_channel_type("--mic_channel"), default=(0, 0))
+  arg_parser.add_argument("--render_channel", type=file_channel_type("--render_channel"), default=(0, 1))
   arg_parser.add_argument("--win_len", type=duration_type("--win_len"), default=None)
   arg_parser.add_argument("--win_type", type=win_type, default=analysis.SwingAnalysis.default_win_type)
   arg_parser.add_argument("--swing_freq", type=float, default=None)
@@ -42,7 +54,6 @@ if __name__ == "__main__":
   
   args = arg_parser.parse_args()
 
-  args.analysis_channels = (0, 1)
   args.analysis_channel_colors = ("#1a85ff", "#d41159")
     
   import tkinter as tk
