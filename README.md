@@ -3,7 +3,7 @@
 ## installation
 
 ```
-conda create --no-shortcuts -c conda-forge -n latency-analyzer python numpy sortednp tk matplotlib librosa
+conda create --no-shortcuts -c conda-forge -n latency-analyzer python numpy sortednp tk matplotlib librosa mplcursors
 source activate latency-analyzer
 ```
 

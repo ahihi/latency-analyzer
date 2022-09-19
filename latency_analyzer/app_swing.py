@@ -11,6 +11,7 @@ from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationTool
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import mplcursors
 import numpy as np
 import tkinter as tk
 from tkinter import filedialog, ttk
@@ -270,6 +271,8 @@ class BinsBoxPlot:
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
     self.ax.set_ylabel("latency (ms)")
 
+    mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
+    
     self.fig.canvas.draw_idle()
 
   def _on_debug(self):
