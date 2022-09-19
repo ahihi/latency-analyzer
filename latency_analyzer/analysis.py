@@ -209,13 +209,15 @@ class SwingAnalysis:
     # corr[self.trim_win_len + t_estimate_samp_quarter - 1:] = 0.0
     
     zero_i = len(lags)//2
-    corr[:zero_i - corr_win_size_half] = 0.0
-    corr[zero_i + corr_win_size_half - 1:] = 0.0
+    # corr[:zero_i - corr_win_size_half] = 0.0
+    # corr[zero_i + corr_win_size_half - 1:] = 0.0
+    corr[:zero_i] = 0.0
+    corr[zero_i + round(t_estimate_samp/2 )- 1:] = 0.0
     
     corr_lags = lags
     corr_lags_s = lags / self.sample_rate
     
-    i_max_corr = np.argmax(np.abs(corr))
+    i_max_corr = np.argmax(corr)
 
     # lag = (i_max_corr - self.trim_win_len) / self.sample_rate
     lag = corr_lags_s[i_max_corr]

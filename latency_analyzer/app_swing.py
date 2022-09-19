@@ -312,6 +312,7 @@ class PlotWindow:
     self.canvas_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=1)
 
   def open_path(self, path):
+    log(f"open path: {path}")
     if os.path.isdir(path):
       files = [os.path.join(path, fn) for fn in os.listdir(path)]
     else:
@@ -341,6 +342,9 @@ class PlotWindow:
           groups[group] = []
         groups[group].append(file_path)
 
+    if not groups:
+      raise FileNotFoundError("no matching files found")
+        
     mic_file_i, mic_channel_i = self.options.mic_channel
     render_file_i, render_channel_i = self.options.render_channel
     
@@ -359,14 +363,21 @@ class PlotWindow:
 
     log()
 
+    log("analyze")
     bins = {}
     for group_key, group_files in groups.items():    
-      print(group_key)
-      try:
-        bin_key = self.bin_func(group_key[0]) # TODO: kinda arbitrary choice...
-      except ValueError as e:
-        print(e.message)
-        continue
+      log(group_key, indent=1)
+      if self.bin_func is not None:
+        try:
+          bin_key = self.bin_func(group_key[0]) # TODO: kinda arbitrary choice...
+        except ValueError as e:
+          log(f"failed to parse bin key: {e}", indent=2)
+          continue
+        else:
+          log(f"bin key: {bin_key}", indent=2)
+      else:
+        bin_key = 0
+        log(f"bin key: {bin_key} (default)", indent=2)
 
       # read only the necessary files, and only once
       
@@ -448,7 +459,7 @@ def make_re_bin_func(bin_name, pattern, convert=int):
   def _bin_func(filename_base):
     m = regex.search(filename_base)
     if not m:
-      raise ValueError(f"  no {bin_name} found in filename (pattern: {pattern})")
+      raise ValueError(f"  no {bin_name} found in filename; pattern: {pattern}")
     return convert(m.group(1))
   return _bin_func
     
@@ -460,6 +471,6 @@ class App:
   def run(self):
     window = PlotWindow(
       self.root, self.options,
-      make_re_bin_func(self.options.bin_name, self.options.bin_re)
+      make_re_bin_func(self.options.bin_name, self.options.bin_re) if self.options.bin_re is not None else None
     )
     window.open_path(self.options.audio_file)

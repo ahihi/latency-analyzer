@@ -46,7 +46,7 @@ if __name__ == "__main__":
   arg_parser.add_argument("--win_type", type=win_type, default=analysis.SwingAnalysis.default_win_type)
   arg_parser.add_argument("--swing_freq", type=float, default=None)
   arg_parser.add_argument("--rms_win_len", type=duration_type("--rms_win_len"), default=2000)
-  arg_parser.add_argument("--bin_re", default=r"(?:^|[ _-])bin[ _-]?(\d+)")
+  arg_parser.add_argument("--bin_re", default=None)
   arg_parser.add_argument("--bin_name", default="bin")
   arg_parser.add_argument("--bin_unit", default=None)
   arg_parser.add_argument("--name_filter_re", default=None)
