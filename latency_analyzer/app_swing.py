@@ -42,6 +42,7 @@ class FilePlots:
     self.selected_result = self.analysis.results[plot_win]
     self.colors = colors
     self.time = np.linspace(0.0, self.analysis.win_len_s, self.analysis.win_len)
+    self.time = self.time[:len(self.time)-2*self.analysis.env_trim]
     
     self.mic_color = self.colors[0] if 0 < len(self.colors) else "k"
     self.render_color = self.colors[1] if 1 < len(self.colors) else "k"
@@ -179,8 +180,10 @@ class EnvsPlot:
     self.ax2.set_xlabel("lag (s)")
     self.ax2.set_ylabel("correlation")
 
-    self.start_trim_widget.configure(to=max(0, self.analysis.win_len-1))
-    self.end_trim_widget.configure(to=max(0, self.analysis.win_len-1))
+    win_len_trimmed = self.analysis.win_len - 2*self.analysis.env_trim
+    
+    self.start_trim_widget.configure(to=max(0, win_len_trimmed-1))
+    self.end_trim_widget.configure(to=max(0, win_len_trimmed-1))
 
     start_frame = int(self.options.start * self.analysis.sample_rate)
     end_frame = start_frame + int(self.options.length * self.analysis.sample_rate) if self.options.length is not None else self.analysis.num_samples-1
@@ -412,6 +415,7 @@ class PlotWindow:
         sample_rate,
         self.options.rms_win_len,
         win_len=self.options.win_len,
+        env_trim=self.options.env_trim,
         swing_freq=self.options.swing_freq,
         path=group_files[0]
       )

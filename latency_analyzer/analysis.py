@@ -25,18 +25,19 @@ def envelope_rms(audio, win_len=2000):
   squared = np.power(audio, 2)
   padded = np.pad(squared, (win_len_half, win_len_half-1), "constant", constant_values=(0,0))
   window = np.ones(win_len) / win_len
-  env = np.sqrt(np.convolve(padded, window, "valid"))
+  env = np.convolve(padded, window, "valid")
 
   # env[0] = 0.0
   # for i in range(1, win_len_half):
-  #   env[i] = np.mean(audio[:i]**2)
-
-  # for i in range(len(audio) - win_len_half + 1, len(audio)):
-  #   env[i] = np.mean(audio[i - win_len_half : i + win_len_half]**2)
+  #   env[i] = np.mean(squared[:i])
     
-  env = peak_normalize(env)
+  # for i in range(len(audio) - win_len_half + 1, len(audio)):
+  #   env[i] = np.mean(squared[i:])
+
+  env = np.sqrt(env)
+  # env = peak_normalize(env)
   
-  assert env.shape[0] == audio.shape[0], f"{env.shape[0]} != {audio.shape[0]}" 
+  assert env.shape == audio.shape, f"{env.shape} != {audio.shape}" 
   return env
 
 def envelope_hilbert(x):
@@ -47,6 +48,9 @@ def envelope_hilbert(x):
   env = env + mean
   assert env.shape[0] == x.shape[0], f"{env.shape[0]} != {x.shape[0]}"
   return env
+
+def trim_edges(signal, samples):
+  return signal[samples:len(signal)-samples]
 
 # https://dsp.stackexchange.com/a/74822
 def rolling_rms(x, n):
@@ -113,7 +117,7 @@ class SwingAnalysis:
   }
   default_win_type = "hann"
   
-  def __init__(self, mic_sig, render_sig, sample_rate, rms_win_len, win_len=None, win_hop=None, win_type=None, swing_freq=None, path=None):
+  def __init__(self, mic_sig, render_sig, sample_rate, rms_win_len, win_len=None, win_hop=None, win_type=None, env_trim=0, swing_freq=None, path=None):
     self.path = path
     self.filename = os.path.basename(self.path) if self.path else "<no filename>"
 
@@ -128,8 +132,8 @@ class SwingAnalysis:
     self.win = self.win_types[self.win_type](self.win_len)
     self.swing_freq = swing_freq
     self.rms_win_len = duration_to_samples(rms_win_len, self.sample_rate)
+    self.env_trim = duration_to_samples(env_trim, self.sample_rate)
     
-    # self.env_trim = 1 * self.sample_rate
     # self.trim_win_len = 30 * self.sample_rate + 2*self.env_trim
     
     print("normalize mic")
@@ -168,9 +172,13 @@ class SwingAnalysis:
     
     print("compute mic envelope")
     mic_env = envelope_rms(mic_sig, self.rms_win_len)
+    mic_env = trim_edges(mic_env, self.env_trim)
+    mic_env = peak_normalize(mic_env)
     
     print("compute render envelope")
-    render_env = peak_normalize(envelope_hilbert(render_sig))
+    render_env = envelope_hilbert(render_sig)
+    render_env = trim_edges(render_env, self.env_trim)
+    render_env = peak_normalize(render_env)
 
     if self.swing_freq is None:
       print("find swing frequency... ", end="")
@@ -225,6 +233,9 @@ class SwingAnalysis:
     
     print("lag:", lag)
 
+    mic_sig = trim_edges(mic_sig, self.env_trim)
+    render_sig = trim_edges(render_sig, self.env_trim)
+    
     signals = {}
     if include_signals:
       signals["mic_sig"] = mic_sig
