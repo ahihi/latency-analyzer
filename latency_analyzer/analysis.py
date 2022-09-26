@@ -116,8 +116,16 @@ class SwingAnalysis:
     "hann": lambda n: scipy.signal.windows.hann(n), # TODO: symmetric (default) or periodic?
   }
   default_win_type = "hann"
+
+  env_methods = {
+    "noop": lambda sig, **kwargs: sig,
+    "rms": lambda sig, **kwargs: envelope_rms(sig, kwargs["rms_win_len"]),
+    "hilbert": lambda sig, **kwargs: envelope_hilbert(sig),
+  }
+  default_mic_env_method = "rms"
+  default_render_env_method = "hilbert"
   
-  def __init__(self, mic_sig, render_sig, sample_rate, rms_win_len, win_len=None, win_hop=None, win_type=None, env_trim=0, swing_freq=None, path=None):
+  def __init__(self, mic_sig, render_sig, sample_rate, rms_win_len, win_len=None, win_hop=None, win_type=None, mic_env_method=None, render_env_method=None, mic_env_invert=False, render_env_invert=False, env_trim=0, swing_freq=None, path=None):
     self.path = path
     self.filename = os.path.basename(self.path) if self.path else "<no filename>"
 
@@ -130,6 +138,10 @@ class SwingAnalysis:
     self.win_hop = duration_to_samples(win_hop, self.sample_rate) if win_hop is not None else self.win_len
     self.win_type = win_type if win_type is not None else self.default_win_type
     self.win = self.win_types[self.win_type](self.win_len)
+    self.mic_env_method = mic_env_method if mic_env_method is not None else self.default_mic_env_method
+    self.render_env_method = render_env_method if render_env_method is not None else self.default_render_env_method
+    self.mic_env_invert = mic_env_invert
+    self.render_env_invert = render_env_invert
     self.swing_freq = swing_freq
     self.rms_win_len = duration_to_samples(rms_win_len, self.sample_rate)
     self.env_trim = duration_to_samples(env_trim, self.sample_rate)
@@ -169,16 +181,22 @@ class SwingAnalysis:
   def analyze_window(self, start, stop, include_signals=True):
     mic_sig = self.mic_sig[start:stop]
     render_sig = self.render_sig[start:stop]
+
+    env_kwargs = {"rms_win_len": self.rms_win_len}
     
-    print("compute mic envelope")
-    mic_env = envelope_rms(mic_sig, self.rms_win_len)
+    print(f"compute mic envelope (method: {self.mic_env_method})")
+    mic_env = self.env_methods[self.mic_env_method](mic_sig, **env_kwargs)
     mic_env = trim_edges(mic_env, self.env_trim)
     mic_env = peak_normalize(mic_env)
+    if self.mic_env_invert:
+      mic_env = -mic_env
     
-    print("compute render envelope")
-    render_env = envelope_hilbert(render_sig)
+    print(f"compute render envelope (method: {self.render_env_method})")
+    render_env = self.env_methods[self.render_env_method](render_sig, **env_kwargs)
     render_env = trim_edges(render_env, self.env_trim)
     render_env = peak_normalize(render_env)
+    if self.render_env_invert:
+      render_env = -render_env
 
     if self.swing_freq is None:
       print("find swing frequency... ", end="")

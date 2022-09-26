@@ -35,13 +35,26 @@ if __name__ == "__main__":
       channel_i = int(m.group(2))
       return (file_i, channel_i)
     return _file_channel_type
-  
+
+  def env_method_type(arg_name):
+    alternatives = analysis.SwingAnalysis.env_methods.keys()
+    def _env_method_type(arg):
+      if arg not in alternatives:
+        alternatives_str = ",".join(alternatives)
+        raise argparse.ArgumentError(None, f"argument {arg_name}: must be one of: {alternatives_str}")
+      return arg
+    return _env_method_type
+
   arg_parser = argparse.ArgumentParser()
   arg_parser.add_argument("audio_file", nargs="?")
   arg_parser.add_argument("--start", type=duration_type("--start"), default=0.0)
   arg_parser.add_argument("--length", type=duration_type("--length"), default=None)
   arg_parser.add_argument("--mic_channel", type=file_channel_type("--mic_channel"), default=(0, 0))
+  arg_parser.add_argument("--mic_env_method", type=env_method_type("--mic_env_method"), default=analysis.SwingAnalysis.default_mic_env_method)
+  arg_parser.add_argument("--mic_env_invert",  action=argparse.BooleanOptionalAction)
   arg_parser.add_argument("--render_channel", type=file_channel_type("--render_channel"), default=(0, 1))
+  arg_parser.add_argument("--render_env_method", type=env_method_type("--render_env_method"), default=analysis.SwingAnalysis.default_render_env_method)
+  arg_parser.add_argument("--render_env_invert",  action=argparse.BooleanOptionalAction)
   arg_parser.add_argument("--win_len", type=duration_type("--win_len"), default=None)
   arg_parser.add_argument("--win_type", type=win_type, default=analysis.SwingAnalysis.default_win_type)
   arg_parser.add_argument("--swing_freq", type=float, default=None)

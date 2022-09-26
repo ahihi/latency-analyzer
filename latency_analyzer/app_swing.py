@@ -405,6 +405,18 @@ class PlotWindow:
       render_sig = render_sig[render_channel_i, :]
 
       assert mic_sample_rate == render_sample_rate
+
+      mic_len = mic_sig.shape[0]
+      render_len = render_sig.shape[0]
+      log(f"mic signal length: {mic_len}", indent=1)
+      log(f"render signal length: {mic_len}", indent=1)
+
+      if mic_len != render_len:
+        shorter_len = min(mic_len, render_len)
+        log(f"truncate to {shorter_len}")
+        mic_sig = mic_sig[:shorter_len]
+        render_sig = render_sig[:shorter_len]
+      
       assert mic_sig.shape == render_sig.shape
 
       sample_rate = mic_sample_rate
@@ -415,6 +427,10 @@ class PlotWindow:
         sample_rate,
         self.options.rms_win_len,
         win_len=self.options.win_len,
+        mic_env_method=self.options.mic_env_method,
+        render_env_method=self.options.render_env_method,
+        mic_env_invert=self.options.mic_env_invert,
+        render_env_invert=self.options.render_env_invert,
         env_trim=self.options.env_trim,
         swing_freq=self.options.swing_freq,
         path=group_files[0]
@@ -429,7 +445,7 @@ class PlotWindow:
     # populate listbox
     
     self.selected_result_list.delete(0, tk.END)
-    self.selected_result_list.insert(tk.END, "aggregate")
+    self.selected_result_list.insert(tk.END, f"latency by {self.options.bin_name}")
     self.selectable_results = [None]
     for key in sorted(self.bins.keys()):
       for file_i, analysis in enumerate(self.bins[key]):
