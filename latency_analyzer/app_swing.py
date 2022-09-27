@@ -433,6 +433,7 @@ class PlotWindow:
         render_env_invert=self.options.render_env_invert,
         env_trim=self.options.env_trim,
         swing_freq=self.options.swing_freq,
+        allow_negative_lag=self.options.allow_negative_lag,
         path=group_files[0]
       )
       

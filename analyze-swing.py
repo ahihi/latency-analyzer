@@ -65,6 +65,8 @@ if __name__ == "__main__":
   arg_parser.add_argument("--name_filter_re", default=None)
   arg_parser.add_argument("--font_size", type=int, default=12)
   arg_parser.add_argument("--env_trim", type=duration_type("--env_trim"), default=SimpleNamespace(seconds=0.1))
+  arg_parser.add_argument("--allow_negative_lag",  action=argparse.BooleanOptionalAction)
+
   
   args = arg_parser.parse_args()
 

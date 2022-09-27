@@ -125,7 +125,7 @@ class SwingAnalysis:
   default_mic_env_method = "rms"
   default_render_env_method = "hilbert"
   
-  def __init__(self, mic_sig, render_sig, sample_rate, rms_win_len, win_len=None, win_hop=None, win_type=None, mic_env_method=None, render_env_method=None, mic_env_invert=False, render_env_invert=False, env_trim=0, swing_freq=None, path=None):
+  def __init__(self, mic_sig, render_sig, sample_rate, rms_win_len, win_len=None, win_hop=None, win_type=None, mic_env_method=None, render_env_method=None, mic_env_invert=False, render_env_invert=False, env_trim=0, swing_freq=None, allow_negative_lag=False, path=None):
     self.path = path
     self.filename = os.path.basename(self.path) if self.path else "<no filename>"
 
@@ -143,6 +143,7 @@ class SwingAnalysis:
     self.mic_env_invert = mic_env_invert
     self.render_env_invert = render_env_invert
     self.swing_freq = swing_freq
+    self.allow_negative_lag = allow_negative_lag
     self.rms_win_len = duration_to_samples(rms_win_len, self.sample_rate)
     self.env_trim = duration_to_samples(env_trim, self.sample_rate)
     
@@ -235,10 +236,14 @@ class SwingAnalysis:
     # corr[self.trim_win_len + t_estimate_samp_quarter - 1:] = 0.0
     
     zero_i = len(lags)//2
+    left_clear_stop_i = zero_i
+    if self.allow_negative_lag:
+      left_clear_stop_i -= round(t_estimate_samp/2)
+    right_clear_start_i = zero_i + round(t_estimate_samp/2) - 1
     # corr[:zero_i - corr_win_size_half] = 0.0
     # corr[zero_i + corr_win_size_half - 1:] = 0.0
-    corr[:zero_i] = 0.0
-    corr[zero_i + round(t_estimate_samp/2 )- 1:] = 0.0
+    corr[:left_clear_stop_i] = 0.0
+    corr[right_clear_start_i:] = 0.0
     
     corr_lags = lags
     corr_lags_s = lags / self.sample_rate
