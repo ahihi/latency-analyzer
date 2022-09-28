@@ -242,8 +242,8 @@ class SwingAnalysis:
     right_clear_start_i = zero_i + round(t_estimate_samp/2) - 1
     # corr[:zero_i - corr_win_size_half] = 0.0
     # corr[zero_i + corr_win_size_half - 1:] = 0.0
-    corr[:left_clear_stop_i] = 0.0
-    corr[right_clear_start_i:] = 0.0
+    corr[:left_clear_stop_i] = -1.0
+    corr[right_clear_start_i:] = -1.0
     
     corr_lags = lags
     corr_lags_s = lags / self.sample_rate
