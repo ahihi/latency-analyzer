@@ -287,7 +287,7 @@ class WindowsPlot:
     self.fig = matplotlib.figure.Figure((16, 7))
     self.ax = self.fig.add_subplot()
     self.x = np.array(list(range(len(self.analysis.results))))
-    self.y = np.array([r.lag for r in analysis.results])
+    self.y = np.array([r.lag * 1000 for r in analysis.results])
 
     items = [self.ax.title, self.ax.xaxis.label, self.ax.yaxis.label] + self.ax.get_xticklabels() + self.ax.get_yticklabels()
     for item in items:
@@ -489,12 +489,18 @@ class PlotWindow:
       f"latency by {self.options.bin_name}",
       self._make_bins_boxplot_func()
     )
+
+    # self._add_selectable_plot(
+    #   f"difference from {self.options.bin_name} median latency by window",
+    #   self._make_median_diff_boxplot_func()
+    # )
     
     for key in sorted(self.bins.keys()):
-      self._add_selectable_plot(
-        f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)} latency by window",
-        self._make_windows_boxplot_func(key)
-      )
+      if len(self.bins[key]) > 1:
+        self._add_selectable_plot(
+          f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)} latency by window",
+          self._make_windows_boxplot_func(key)
+        )
       
       for file_i, analysis in enumerate(self.bins[key]):
         self._add_selectable_plot(
@@ -540,7 +546,26 @@ class PlotWindow:
       xlabel = format_label(self.options.bin_name, self.options.bin_unit),
       ylabel = "latency (ms)",
     )
-
+  
+  def _make_median_diff_boxplot_func(self):
+    bins = {}
+    for k, analyses in self.bins.items():
+      bin_lags = [r.lag for a in analyses for r in a.results]
+      median = np.median(bin_lags)
+      for analysis in analyses:
+        for i, r in enumerate(analysis.results):
+          if i not in bins:
+            bins[i] = []
+          bins[i].append((r.lag - median)*1000)
+    return lambda: BinsBoxPlot(
+      self.canvas_frame,
+      bins,
+      self.options,
+      title = f"difference from {self.options.bin_name} median latency by window",
+      xlabel = "window",
+      ylabel = "difference from median latency (ms)"
+    )
+  
   def _make_windows_boxplot_func(self, bin_key):
     analyses = self.bins[bin_key]
     bins = {}
@@ -548,7 +573,7 @@ class PlotWindow:
       for i, r in enumerate(analysis.results):
         if i not in bins:
           bins[i] = []
-        bins[i].append(r.lag)
+        bins[i].append(r.lag * 1000)
     # import pdb; pdb.set_trace()
     return lambda: BinsBoxPlot(
       self.canvas_frame,
