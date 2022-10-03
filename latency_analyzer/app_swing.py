@@ -227,23 +227,21 @@ class EnvsPlot:
     import pdb; pdb.set_trace()
 
 class BinsBoxPlot:
-  def __init__(self, frame, options, bins):
+  def __init__(self, frame, bins, options, title, xlabel, ylabel):
     self.frame = frame
     self.options = options
-    self.bins = bins
 
     self.fig = matplotlib.figure.Figure((16, 7))
     self.ax = self.fig.add_subplot()
-    self.x = np.array(sorted(self.bins.keys()))
+    self.x = np.array(sorted(bins.keys()))
+    self.bins = [np.array(bins[k], dtype=np.float32) for k in self.x]
 
     items = [self.ax.title, self.ax.xaxis.label, self.ax.yaxis.label] + self.ax.get_xticklabels() + self.ax.get_yticklabels()
     for item in items:
       item.set_fontsize(self.options.font_size)
     
-    self.lags_binned = [np.array([r.lag * 1000 for a in self.bins[k] for r in a.results], dtype=np.float32) for k in self.x]
-
-    self.means_binned = np.array([np.mean(lags) for lags in self.lags_binned], dtype=np.float32)
-    self.stdevs_binned = np.array([np.std(lags) for lags in self.lags_binned], dtype=np.float32)
+    self.means_binned = np.array([np.mean(values) for values in self.bins], dtype=np.float32)
+    self.stdevs_binned = np.array([np.std(values) for values in self.bins], dtype=np.float32)
 
     self.actions_frame = tk.Frame(self.frame)
     self.debug_button = tk.Button(self.actions_frame, text="Debug", command=self._on_debug)
@@ -260,18 +258,18 @@ class BinsBoxPlot:
     self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
     width = (np.min(np.ediff1d(self.x)) if len(self.x) > 1 else 1) * 0.75
-    self.ax.set_title(f"latency by {self.options.bin_name}", fontsize=self.options.font_size)
+    self.ax.set_title(title, fontsize=self.options.font_size)
     self.ax.grid(axis="y", alpha=0.5)
-    self.ax.boxplot(self.lags_binned, positions=self.x, widths=width)
+    self.ax.boxplot(self.bins, positions=self.x, widths=width)
     
     # self.ax.plot(
     #   self.x, self.means_binned,
     #   label=f"mean lag", color="k", alpha=1, linewidth=0.5
     # )
 
-    self.ax.set_xlabel(format_label(self.options.bin_name, self.options.bin_unit))
+    self.ax.set_xlabel(xlabel)
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
-    self.ax.set_ylabel("latency (ms)")
+    self.ax.set_ylabel(ylabel)
 
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
     
@@ -295,7 +293,7 @@ class WindowsPlot:
     for item in items:
       item.set_fontsize(self.options.font_size)
 
-      self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
+    self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
     self.canvas.draw() # TODO: refactor?
 
     self.toolbar = NavigationToolbar2Tk(self.canvas, self.frame, pack_toolbar=False)
@@ -309,11 +307,11 @@ class WindowsPlot:
     self.ax.set_xlabel("window")
     self.ax.set_ylabel("latency (ms)")
 
-    ymin = np.max(self.y)
-    ymax = np.max(self.y)
-    plot_ymin = 0 if ymin >= 0 else ymin * 1.05
-    plot_ymax = ymax * 1.05
-    self.ax.set_ylim(plot_ymin, plot_ymax)
+    # ymin = np.max(self.y)
+    # ymax = np.max(self.y)
+    # plot_ymin = 0 if ymin >= 0 else ymin * 1.05
+    # plot_ymax = ymax * 1.05
+    # self.ax.set_ylim(plot_ymin, plot_ymax)
     self.ax.scatter(self.x, self.y)
 
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
@@ -489,10 +487,15 @@ class PlotWindow:
 
     self._add_selectable_plot(
       f"latency by {self.options.bin_name}",
-      self._make_aggregate_boxplot_func()
+      self._make_bins_boxplot_func()
     )
     
     for key in sorted(self.bins.keys()):
+      self._add_selectable_plot(
+        f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)} latency by window",
+        self._make_windows_boxplot_func(key)
+      )
+      
       for file_i, analysis in enumerate(self.bins[key]):
         self._add_selectable_plot(
           f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)}, file {file_i} latency by window",
@@ -527,9 +530,35 @@ class PlotWindow:
     self.selected_result_list.insert(tk.END, title)
     self.plot_functions.append(plot_function)
       
-  def _make_aggregate_boxplot_func(self):
-    return lambda: BinsBoxPlot(self.canvas_frame, self.options, self.bins)
+  def _make_bins_boxplot_func(self):
+    bins = {k: np.array([r.lag * 1000 for a in analyses for r in a.results], dtype=np.float32) for k, analyses in self.bins.items()}
+    return lambda: BinsBoxPlot(
+      self.canvas_frame,
+      bins,
+      self.options,
+      title = f"latency by {self.options.bin_name}",
+      xlabel = format_label(self.options.bin_name, self.options.bin_unit),
+      ylabel = "latency (ms)",
+    )
 
+  def _make_windows_boxplot_func(self, bin_key):
+    analyses = self.bins[bin_key]
+    bins = {}
+    for analysis in analyses:
+      for i, r in enumerate(analysis.results):
+        if i not in bins:
+          bins[i] = []
+        bins[i].append(r.lag)
+    # import pdb; pdb.set_trace()
+    return lambda: BinsBoxPlot(
+      self.canvas_frame,
+      bins,
+      self.options,
+      title = f"latency by window",
+      xlabel = "window",
+      ylabel = "latency (ms)",
+    )
+  
   def _make_windows_plot_func(self, analysis):
     return lambda: WindowsPlot(self.canvas_frame, self.options, analysis)
   
