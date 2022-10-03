@@ -163,7 +163,6 @@ class EnvsPlot:
       label="end trim (samples)"
     )
 
-    self.plots = None
     self.plots = FilePlots(self.ax0, self.ax1, self.ax2, self.analysis, self.options.analysis_channel_colors, self.result_i)
 
     self.ax0.set_title(f"{self.analysis.filename} ({self.analysis.sample_rate} Hz)", fontsize=self.options.font_size)
@@ -280,7 +279,47 @@ class BinsBoxPlot:
 
   def _on_debug(self):
     import pdb; pdb.set_trace()
-      
+
+class WindowsPlot:
+  def __init__(self, frame, options, analysis):
+    self.frame = frame
+    self.options = options
+    self.analysis = analysis
+
+    self.fig = matplotlib.figure.Figure((16, 7))
+    self.ax = self.fig.add_subplot()
+    self.x = np.array(list(range(len(self.analysis.results))))
+    self.y = np.array([r.lag for r in analysis.results])
+
+    items = [self.ax.title, self.ax.xaxis.label, self.ax.yaxis.label] + self.ax.get_xticklabels() + self.ax.get_yticklabels()
+    for item in items:
+      item.set_fontsize(self.options.font_size)
+
+      self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
+    self.canvas.draw() # TODO: refactor?
+
+    self.toolbar = NavigationToolbar2Tk(self.canvas, self.frame, pack_toolbar=False)
+    self.toolbar.update()
+
+    self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+    self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+    self.ax.set_title(f"latency by window", fontsize=self.options.font_size)
+    self.ax.grid(axis="y", alpha=0.5)
+    self.ax.set_xlabel("window")
+    self.ax.set_ylabel("latency (ms)")
+
+    ymin = np.max(self.y)
+    ymax = np.max(self.y)
+    plot_ymin = 0 if ymin >= 0 else ymin * 1.05
+    plot_ymax = ymax * 1.05
+    self.ax.set_ylim(plot_ymin, plot_ymax)
+    self.ax.scatter(self.x, self.y)
+
+    mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
+    
+    self.fig.canvas.draw_idle()
+    
 class PlotWindow:
   def __init__(self, root, options, bin_func):
     self.root = root
@@ -446,13 +485,25 @@ class PlotWindow:
     # populate listbox
     
     self.selected_result_list.delete(0, tk.END)
-    self.selected_result_list.insert(tk.END, f"latency by {self.options.bin_name}")
-    self.selectable_results = [None]
+    self.plot_functions = []
+
+    self._add_selectable_plot(
+      f"latency by {self.options.bin_name}",
+      self._make_aggregate_boxplot_func()
+    )
+    
     for key in sorted(self.bins.keys()):
       for file_i, analysis in enumerate(self.bins[key]):
+        self._add_selectable_plot(
+          f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)}, file {file_i} latency by window",
+          self._make_windows_plot_func(analysis)
+        )
+        
         for result_i, result in enumerate(analysis.results):
-          self.selected_result_list.insert(tk.END, f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)}, file {file_i}, window {result_i} -> {result.lag*1000:.02f} ms")
-          self.selectable_results.append((key, file_i, result_i))
+          self._add_selectable_plot(
+            f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)}, file {file_i}, window {result_i} -> {result.lag*1000:.02f} ms",
+            self._make_envs_plot_func((key, file_i, result_i))
+          )
 
     self.selected_result_list.activate(0)
     self.selected_result_list.selection_set(0)
@@ -470,13 +521,20 @@ class PlotWindow:
     for widget in self.canvas_frame.winfo_children():
       widget.destroy()
 
-    result_info = self.selectable_results[i]
+    self.plot = self.plot_functions[i]()
 
-    if result_info is None:
-      # aggregate
-      self.plot = BinsBoxPlot(self.canvas_frame, self.options, self.bins)
-    else:
-      self.plot = EnvsPlot(self.canvas_frame, self.options, self.bins, result_info)
+  def _add_selectable_plot(self, title, plot_function):
+    self.selected_result_list.insert(tk.END, title)
+    self.plot_functions.append(plot_function)
+      
+  def _make_aggregate_boxplot_func(self):
+    return lambda: BinsBoxPlot(self.canvas_frame, self.options, self.bins)
+
+  def _make_windows_plot_func(self, analysis):
+    return lambda: WindowsPlot(self.canvas_frame, self.options, analysis)
+  
+  def _make_envs_plot_func(self, result_info):
+    return lambda: EnvsPlot(self.canvas_frame, self.options, self.bins, result_info)
 
 def make_re_bin_func(bin_name, pattern, convert=int):
   regex = re.compile(pattern)
