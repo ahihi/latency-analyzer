@@ -260,7 +260,7 @@ class BinsBoxPlot:
     width = (np.min(np.ediff1d(self.x)) if len(self.x) > 1 else 1) * 0.75
     self.ax.set_title(title, fontsize=self.options.font_size)
     self.ax.grid(axis="y", alpha=0.5)
-    self.ax.boxplot(self.bins, positions=self.x, widths=width)
+    self.ax.boxplot(self.bins, positions=self.x, widths=width, showmeans=self.options.box_plot_means)
     
     # self.ax.plot(
     #   self.x, self.means_binned,
