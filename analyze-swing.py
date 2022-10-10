@@ -63,10 +63,11 @@ if __name__ == "__main__":
   arg_parser.add_argument("--bin_name", default="bin")
   arg_parser.add_argument("--bin_unit", default=None)
   arg_parser.add_argument("--name_filter_re", default=None)
-  arg_parser.add_argument("--font_size", type=int, default=12)
+  arg_parser.add_argument("--font_size", type=float, default=12)
   arg_parser.add_argument("--env_trim", type=duration_type("--env_trim"), default=SimpleNamespace(seconds=0.1))
-  arg_parser.add_argument("--allow_negative_lag",  action=argparse.BooleanOptionalAction)
-  arg_parser.add_argument("--box_plot_means",  action=argparse.BooleanOptionalAction)
+  arg_parser.add_argument("--allow_negative_lag", action=argparse.BooleanOptionalAction)
+  arg_parser.add_argument("--box_plot_means", action=argparse.BooleanOptionalAction)
+  arg_parser.add_argument("--ymin", type=float, default=None)
 
   
   args = arg_parser.parse_args()

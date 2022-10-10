@@ -271,6 +271,9 @@ class BinsBoxPlot:
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
     self.ax.set_ylabel(ylabel)
 
+    if self.options.ymin is not None:
+      self.ax.set_ylim(bottom=self.options.ymin)
+    
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
     
     self.fig.canvas.draw_idle()
@@ -312,6 +315,9 @@ class WindowsPlot:
     # plot_ymin = 0 if ymin >= 0 else ymin * 1.05
     # plot_ymax = ymax * 1.05
     # self.ax.set_ylim(plot_ymin, plot_ymax)
+    if self.options.ymin is not None:
+      self.ax.set_ylim(bottom=self.options.ymin)
+      
     self.ax.scatter(self.x, self.y)
 
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
