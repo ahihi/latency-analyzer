@@ -100,7 +100,7 @@ class EnvsPlot:
     self.bin_key, self.file_i, self.result_i = result_info
     self.analysis = self.bins[self.bin_key][self.file_i]
     self.time = None
-    self.fig = matplotlib.figure.Figure((16, 7))
+    self.fig = matplotlib.figure.Figure((self.options.plot_width, self.options.plot_height))
     self.gs = gridspec.GridSpec(2, 1, height_ratios=[2,1], wspace=0.0)
     self.env_gs = self.gs[0].subgridspec(2, 1, height_ratios=[1,1], wspace=0.0, hspace=0.0)
     
@@ -231,7 +231,7 @@ class BinsBoxPlot:
     self.frame = frame
     self.options = options
 
-    self.fig = matplotlib.figure.Figure((16, 7))
+    self.fig = matplotlib.figure.Figure((self.options.plot_width, self.options.plot_height))
     self.ax = self.fig.add_subplot()
     self.x = np.array(sorted(bins.keys()))
     self.bins = [np.array(bins[k], dtype=np.float32) for k in self.x]
@@ -243,19 +243,20 @@ class BinsBoxPlot:
     self.means_binned = np.array([np.mean(values) for values in self.bins], dtype=np.float32)
     self.stdevs_binned = np.array([np.std(values) for values in self.bins], dtype=np.float32)
 
-    self.actions_frame = tk.Frame(self.frame)
-    self.debug_button = tk.Button(self.actions_frame, text="Debug", command=self._on_debug)
-    self.debug_button.pack(side=tk.RIGHT)
-    self.actions_frame.pack(side=tk.TOP, fill=tk.X)
-
-    self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
-    self.canvas.draw() # TODO: refactor?
-
-    self.toolbar = NavigationToolbar2Tk(self.canvas, self.frame, pack_toolbar=False)
-    self.toolbar.update()
-
-    self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-    self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    if self.frame is not None:
+      self.actions_frame = tk.Frame(self.frame)
+      self.debug_button = tk.Button(self.actions_frame, text="Debug", command=self._on_debug)
+      self.debug_button.pack(side=tk.RIGHT)
+      self.actions_frame.pack(side=tk.TOP, fill=tk.X)
+      
+      self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
+      self.canvas.draw() # TODO: refactor?
+      
+      self.toolbar = NavigationToolbar2Tk(self.canvas, self.frame, pack_toolbar=False)
+      self.toolbar.update()
+      
+      self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+      self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
     width = (np.min(np.ediff1d(self.x)) if len(self.x) > 1 else 1) * 0.75
     self.ax.set_title(title, fontsize=self.options.font_size)
@@ -271,12 +272,13 @@ class BinsBoxPlot:
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
     self.ax.set_ylabel(ylabel)
 
-    if self.options.ymin is not None:
+    if self.options.ymin is not None and self.options.ymin < np.min(self.bins):
       self.ax.set_ylim(bottom=self.options.ymin)
     
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
     
-    self.fig.canvas.draw_idle()
+    if self.frame is not None:
+      self.fig.canvas.draw_idle()
 
   def _on_debug(self):
     import pdb; pdb.set_trace()
@@ -287,7 +289,7 @@ class WindowsPlot:
     self.options = options
     self.analysis = analysis
 
-    self.fig = matplotlib.figure.Figure((16, 7))
+    self.fig = matplotlib.figure.Figure((self.options.plot_width, self.options.plot_height))
     self.ax = self.fig.add_subplot()
     self.x = np.array(list(range(len(self.analysis.results))))
     self.y = np.array([r.lag * 1000 for r in analysis.results])
@@ -333,6 +335,7 @@ class PlotWindow:
     self.name_filter_re = re.compile(self.options.name_filter_re) if self.options.name_filter_re is not None else None
     self.selectable_results = []
     self.selected_result = None
+    self.headless = (self.options.save_bins_boxplot is not None) or (self.options.save_windows_boxplot is not None)
 
     self.bins = {}
 
@@ -485,15 +488,21 @@ class PlotWindow:
       bins[bin_key].append(analysis)
 
     self.bins = bins
+
+    self._populate_selected_result_list()
     
-    # populate listbox
-    
+  def _populate_selected_result_list(self):
     self.selected_result_list.delete(0, tk.END)
     self.plot_functions = []
 
+    bins_boxplot_func = self._make_bins_boxplot_func()
+
+    if self.options.save_bins_boxplot is not None:
+      bins_boxplot_func().fig.savefig(self.options.save_bins_boxplot)
+
     self._add_selectable_plot(
       f"latency by {self.options.bin_name}",
-      self._make_bins_boxplot_func()
+      bins_boxplot_func
     )
 
     # self._add_selectable_plot(
@@ -503,9 +512,18 @@ class PlotWindow:
     
     for key in sorted(self.bins.keys()):
       if len(self.bins[key]) > 1:
+        windows_boxplot_func = self._make_windows_boxplot_func(key)
+        
+        if self.options.save_windows_boxplot is not None:
+          windows_boxplot_path = self.options.save_windows_boxplot
+          if len(self.bins) > 1:
+            base, ext = os.path.splitext(windows_boxplot_path)
+            windows_boxplot_path = f"{base} - {self.options.bin_name} {format_quantity(key, self.options.bin_unit)}{ext}"
+          windows_boxplot_func().fig.savefig(windows_boxplot_path)
+          
         self._add_selectable_plot(
           f"{self.options.bin_name} {format_quantity(key, self.options.bin_unit)} latency by window",
-          self._make_windows_boxplot_func(key)
+          windows_boxplot_func
         )
       
       for file_i, analysis in enumerate(self.bins[key]):
@@ -520,6 +538,9 @@ class PlotWindow:
             self._make_envs_plot_func((key, file_i, result_i))
           )
 
+    if self.headless:
+      sys.exit(0)
+          
     self.selected_result_list.activate(0)
     self.selected_result_list.selection_set(0)
     self._on_selected_result_change(None)
@@ -545,7 +566,7 @@ class PlotWindow:
   def _make_bins_boxplot_func(self):
     bins = {k: np.array([r.lag * 1000 for a in analyses for r in a.results], dtype=np.float32) for k, analyses in self.bins.items()}
     return lambda: BinsBoxPlot(
-      self.canvas_frame,
+      None if self.headless else self.canvas_frame,
       bins,
       self.options,
       title = f"latency by {self.options.bin_name}",
@@ -582,7 +603,7 @@ class PlotWindow:
         bins[i].append(r.lag * 1000)
     # import pdb; pdb.set_trace()
     return lambda: BinsBoxPlot(
-      self.canvas_frame,
+      None if self.headless else self.canvas_frame,
       bins,
       self.options,
       title = f"latency by window",
