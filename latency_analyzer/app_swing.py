@@ -1,3 +1,4 @@
+import csv
 import os
 import re
 import subprocess
@@ -272,7 +273,8 @@ class BinsBoxPlot:
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
     self.ax.set_ylabel(ylabel)
 
-    if self.options.ymin is not None and self.options.ymin < np.min(self.bins):
+    data_min = np.min(self.bins)
+    if self.options.ymin is not None and self.options.ymin < data_min:
       self.ax.set_ylim(bottom=self.options.ymin)
     
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
@@ -317,7 +319,9 @@ class WindowsPlot:
     # plot_ymin = 0 if ymin >= 0 else ymin * 1.05
     # plot_ymax = ymax * 1.05
     # self.ax.set_ylim(plot_ymin, plot_ymax)
-    if self.options.ymin is not None:
+
+    data_min = np.min(self.y)
+    if self.options.ymin is not None and self.options.ymin < data_min:
       self.ax.set_ylim(bottom=self.options.ymin)
       
     self.ax.scatter(self.x, self.y)
@@ -335,7 +339,7 @@ class PlotWindow:
     self.name_filter_re = re.compile(self.options.name_filter_re) if self.options.name_filter_re is not None else None
     self.selectable_results = []
     self.selected_result = None
-    self.headless = (self.options.save_bins_boxplot is not None) or (self.options.save_windows_boxplot is not None)
+    self.headless = self.options.headless
 
     self.bins = {}
 
@@ -489,7 +493,25 @@ class PlotWindow:
 
     self.bins = bins
 
+    if self.options.save_lags_csv is not None:
+      self._save_csv(self.options.save_lags_csv)
+    
     self._populate_selected_result_list()
+
+  def _save_csv(self, csv_path):
+    with open(csv_path, "w", newline="") as csvfile:
+      fieldnames = ["bin", "file", "window", "lag_ms"]
+      writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+      writer.writeheader()
+      for bin_key, analyses in self.bins.items():
+        for analysis_i, analysis in enumerate(analyses):
+          for result_i, result in enumerate(analysis.results):
+            writer.writerow({
+              "bin": bin_key,
+              "file": analysis_i,
+              "window": result_i,
+              "lag_ms": result.lag * 1000
+            })
     
   def _populate_selected_result_list(self):
     self.selected_result_list.delete(0, tk.END)

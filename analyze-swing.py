@@ -70,9 +70,10 @@ if __name__ == "__main__":
   arg_parser.add_argument("--ymin", type=float, default=None)
   arg_parser.add_argument("--save_bins_boxplot", default=None)
   arg_parser.add_argument("--save_windows_boxplot", default=None)
+  arg_parser.add_argument("--save_lags_csv", default=None)
   arg_parser.add_argument("--plot_width", type=float, default=16)
   arg_parser.add_argument("--plot_height", type=float, default=7)
-
+  arg_parser.add_argument("--headless", action=argparse.BooleanOptionalAction)
   
   args = arg_parser.parse_args()
 
