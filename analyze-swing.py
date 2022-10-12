@@ -68,12 +68,14 @@ if __name__ == "__main__":
   arg_parser.add_argument("--allow_negative_lag", action=argparse.BooleanOptionalAction)
   arg_parser.add_argument("--box_plot_means", action=argparse.BooleanOptionalAction)
   arg_parser.add_argument("--ymin", type=float, default=None)
+  arg_parser.add_argument("--ymax", type=float, default=None)
   arg_parser.add_argument("--save_bins_boxplot", default=None)
   arg_parser.add_argument("--save_windows_boxplot", default=None)
   arg_parser.add_argument("--save_lags_csv", default=None)
   arg_parser.add_argument("--plot_width", type=float, default=16)
   arg_parser.add_argument("--plot_height", type=float, default=7)
   arg_parser.add_argument("--headless", action=argparse.BooleanOptionalAction)
+  arg_parser.add_argument("--ytick_base", type=float, default=None)
   
   args = arg_parser.parse_args()
 

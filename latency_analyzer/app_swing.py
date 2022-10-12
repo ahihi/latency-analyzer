@@ -12,6 +12,7 @@ from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationTool
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import matplotlib.ticker as plticker
 import mplcursors
 import numpy as np
 import tkinter as tk
@@ -263,6 +264,9 @@ class BinsBoxPlot:
     self.ax.set_title(title, fontsize=self.options.font_size)
     self.ax.grid(axis="y", alpha=0.5)
     self.ax.boxplot(self.bins, positions=self.x, widths=width, showmeans=self.options.box_plot_means)
+
+    if self.options.ytick_base is not None:
+      self.ax.yaxis.set_major_locator(plticker.MultipleLocator(base=self.options.ytick_base))
     
     # self.ax.plot(
     #   self.x, self.means_binned,
@@ -274,8 +278,11 @@ class BinsBoxPlot:
     self.ax.set_ylabel(ylabel)
 
     data_min = np.min(self.bins)
+    data_max = np.max(self.bins)
     if self.options.ymin is not None and self.options.ymin < data_min:
       self.ax.set_ylim(bottom=self.options.ymin)
+    if self.options.ymax is not None and self.options.ymax > data_max:
+      self.ax.set_ylim(top=self.options.ymax)
     
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
     
@@ -314,16 +321,16 @@ class WindowsPlot:
     self.ax.set_xlabel("window")
     self.ax.set_ylabel("latency (ms)")
 
-    # ymin = np.max(self.y)
-    # ymax = np.max(self.y)
-    # plot_ymin = 0 if ymin >= 0 else ymin * 1.05
-    # plot_ymax = ymax * 1.05
-    # self.ax.set_ylim(plot_ymin, plot_ymax)
-
+    if self.options.ytick_base is not None:
+      self.ax.yaxis.set_major_locator(plticker.MultipleLocator(base=self.options.ytick_base))
+    
     data_min = np.min(self.y)
+    data_max = np.max(self.y)
     if self.options.ymin is not None and self.options.ymin < data_min:
       self.ax.set_ylim(bottom=self.options.ymin)
-      
+    if self.options.ymax is not None and self.options.ymax > data_max:
+      self.ax.set_ylim(top=self.options.ymax)
+
     self.ax.scatter(self.x, self.y)
 
     mplcursors.cursor(self.ax, hover=mplcursors.HoverMode.Transient)
