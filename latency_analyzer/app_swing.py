@@ -277,8 +277,8 @@ class BinsBoxPlot:
     # self.ax.set_xticks([i+1 for i, _ in enumerate(self.x)], self.x)
     self.ax.set_ylabel(ylabel)
 
-    data_min = np.min(self.bins)
-    data_max = np.max(self.bins)
+    data_min = np.min(np.concatenate(self.bins))
+    data_max = np.max(np.concatenate(self.bins))
     if self.options.ymin is not None and self.options.ymin < data_min:
       self.ax.set_ylim(bottom=self.options.ymin)
     if self.options.ymax is not None and self.options.ymax > data_max:
